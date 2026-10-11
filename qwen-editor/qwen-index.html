@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Editor de Imagens — Qwen</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --card: #1a1d27;
+      --border: #2a2f3d;
+      --text: #e8eaf0;
+      --muted: #8b93a7;
+      --accent: #6c8cff;
+      --accent-hover: #8aa4ff;
+      --success: #3ecf8e;
+      --error: #ff6b6b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+    h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .sub { color: var(--muted); margin-bottom: 2rem; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.25rem;
+    }
+    label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--muted); }
+    .drop {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      min-height: 140px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+    .drop:hover, .drop.dragover { border-color: var(--accent); background: rgba(108,140,255,0.06); }
+    .drop img { max-height: 120px; max-width: 100%; border-radius: 8px; object-fit: contain; }
+    .drop input { display: none; }
+    .drop .hint { font-size: 0.8rem; color: var(--muted); }
+    textarea {
+      width: 100%;
+      min-height: 110px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      padding: 0.75rem;
+      font-size: 0.95rem;
+      resize: vertical;
+      font-family: inherit;
+    }
+    textarea:focus { outline: none; border-color: var(--accent); }
+    .row { display: flex; gap: 1rem; align-items: end; margin-top: 1rem; flex-wrap: wrap; }
+    .field { flex: 1; min-width: 120px; }
+    .field-narrow { flex: 0 1 110px; min-width: 90px; }
+    input[type=number] {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 0.6rem 0.75rem;
+      font-size: 0.95rem;
+    }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 0.75rem 1.5rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    button:hover:not(:disabled) { background: var(--accent-hover); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.btn-secondary { background: var(--border); color: var(--text); }
+    button.btn-secondary:hover:not(:disabled) { background: #3a4155; }
+    button.btn-danger { background: var(--error); }
+    button.btn-danger:hover:not(:disabled) { filter: brightness(1.1); }
+    button.btn-queue { background: var(--success); }
+    button.btn-queue:hover:not(:disabled) { filter: brightness(1.08); }
+    button.btn-queue.paused { background: #e6a23c; }
+    .gallery-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+    .gallery-head h2 { margin-bottom: 0; }
+    .gallery-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .gallery-actions button { padding: 0.5rem 0.9rem; font-size: 0.85rem; }
+    .preset-filters { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0 0.75rem; align-items: center; }
+    .preset-filters select, .preset-filters input { flex: 1; min-width: 120px; padding: 0.45rem 0.6rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+    .preset-filters input { min-width: 160px; }
+    .pe-meta { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.5rem; }
+    .thumb-card.stale-regen { outline: 2px solid #e6a23c; outline-offset: 2px; border-radius: 10px; }
+    .badge-stale { display: inline-block; background: #e6a23c; color: #1a1200; font-size: 0.7rem; font-weight: 700; padding: 0.1rem 0.35rem; border-radius: 4px; margin-top: 0.25rem; }
+    .queue-row { margin-top: 0.75rem; align-items: center; }
+    .queue-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .queue-info { font-size: 0.85rem; color: var(--muted); flex: 1; min-width: 200px; }
+    .prompt-admin-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
+    .prompt-admin-row button { padding: 0.45rem 0.85rem; font-size: 0.85rem; }
+    .prompt-editor {
+      margin-top: 0.75rem;
+      padding: 1rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .prompt-editor[hidden] { display: none !important; }
+    .prompt-editor .field-row { margin-bottom: 0.75rem; }
+    .prompt-editor input[type=text] {
+      width: 100%;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 0.6rem 0.75rem;
+      font-size: 0.95rem;
+    }
+    .prompt-editor textarea { min-height: 90px; }
+    .prompt-editor-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
+    .prompt-editor-actions button { padding: 0.5rem 1rem; font-size: 0.9rem; }
+    .status {
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      display: none;
+    }
+    .status.show { display: block; }
+    .status.running { background: rgba(108,140,255,0.15); color: var(--accent); }
+    .status.done { background: rgba(62,207,142,0.15); color: var(--success); }
+    .status.error { background: rgba(255,107,107,0.15); color: var(--error); }
+    .result { margin-top: 1.5rem; }
+    .result img {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    .gallery { margin-top: 2.5rem; }
+    .gallery h2 { font-size: 1.1rem; margin-bottom: 1rem; }
+    .thumbs {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 0.75rem;
+    }
+    .thumb-card {
+      position: relative;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: var(--card);
+      display: flex;
+      flex-direction: column;
+    }
+    .thumb-img-wrap {
+      position: relative;
+      aspect-ratio: 1;
+    }
+    .thumb-card a { display: block; width: 100%; height: 100%; }
+    .thumb-img-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .thumb-meta {
+      font-size: 0.68rem;
+      line-height: 1.3;
+      color: var(--muted);
+      padding: 0.35rem 0.45rem 0.45rem;
+      word-break: break-word;
+    }
+    .lightbox-meta { display: block; margin-top: 0.35rem; font-size: 0.85rem; color: var(--muted); font-weight: 400; }
+    .delete-btn {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      background: var(--error);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 6px;
+      padding: 0.4rem 0.55rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      cursor: pointer;
+      z-index: 5;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.45);
+    }
+    .delete-btn:hover { filter: brightness(1.1); }
+    .clear-prompt-btn {
+      position: absolute;
+      top: 6px;
+      left: 6px;
+      background: rgba(30, 34, 48, 0.92);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.35rem 0.5rem;
+      font-size: 0.68rem;
+      font-weight: 600;
+      cursor: pointer;
+      z-index: 5;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+    }
+    .clear-prompt-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .thumb-meta-actions {
+      margin-top: 0.25rem;
+    }
+    .thumb-meta-actions button {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 0.65rem;
+      padding: 0;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .thumb-meta-actions button:hover { color: var(--accent); }
+    .lightbox-clear-prompt {
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+    }
+    .lightbox-clear-prompt button {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 0.35rem 0.65rem;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+    .lightbox-clear-prompt button:hover { border-color: var(--accent); }
+    .result-wrap { position: relative; margin-top: 0.5rem; }
+    .result-wrap .delete-btn {
+      top: 10px;
+      right: 10px;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.85rem;
+    }
+    .example { font-size: 0.78rem; color: var(--muted); margin-top: 0.4rem; }
+    .select-input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 0.6rem 0.75rem;
+      font-size: 0.95rem;
+    }
+    .select-input:focus { outline: none; border-color: var(--accent); }
+    .thumb-card .thumb-open,
+    .result-wrap img { cursor: zoom-in; }
+    .lightbox {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: rgba(0, 0, 0, 0.92);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .lightbox[hidden] { display: none !important; }
+    .lightbox-content {
+      position: relative;
+      max-width: min(96vw, 1400px);
+      max-height: 92vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .lightbox-content img {
+      max-width: 96vw;
+      max-height: calc(92vh - 80px);
+      object-fit: contain;
+      border-radius: 8px;
+      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+    }
+    .lightbox-content.delete-pending img {
+      outline: 3px solid var(--error);
+      filter: brightness(0.85);
+    }
+    .lightbox-counter { font-size: 0.9rem; color: var(--muted); }
+    .lightbox-hint { font-size: 0.78rem; color: var(--muted); text-align: center; }
+    .lightbox-hint kbd,
+    .lightbox-delete-prompt kbd {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.1rem 0.35rem;
+      font-size: 0.75rem;
+    }
+    .lightbox-delete-prompt {
+      background: rgba(255, 107, 107, 0.15);
+      border: 1px solid var(--error);
+      color: #ffb4b4;
+      padding: 0.6rem 1rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+    .lightbox-delete-prompt[hidden] { display: none !important; }
+    .lightbox-close {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      width: 2.5rem;
+      height: 2.5rem;
+      font-size: 1.5rem;
+      line-height: 1;
+      cursor: pointer;
+      z-index: 2;
+    }
+    .lightbox-close:hover { background: rgba(255, 255, 255, 0.2); }
+    .lightbox-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      width: 3rem;
+      height: 3rem;
+      font-size: 2rem;
+      line-height: 1;
+      cursor: pointer;
+      z-index: 2;
+    }
+    .lightbox-nav:hover { background: rgba(255, 255, 255, 0.2); }
+    .lightbox-prev { left: 1rem; }
+    .lightbox-next { right: 1rem; }
+    @media (max-width: 600px) {
+      .lightbox-nav { width: 2.5rem; height: 2.5rem; font-size: 1.5rem; }
+      .lightbox-prev { left: 0.25rem; }
+      .lightbox-next { right: 0.25rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Editor de Imagens</h1>
+    <p class="sub" id="model-hint">Fotos grandes são redimensionadas automaticamente.</p>
+
+    <form id="form">
+      <div class="card" style="margin-bottom:1.5rem">
+        <label for="model">Modelo</label>
+        <select id="model" name="model" class="select-input">
+          <!--MODEL_OPTIONS-->
+        </select>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <label>Imagem para editar *</label>
+          <div class="drop" id="drop1">
+            <input type="file" id="image1" name="image1" accept="image/*" required>
+            <span class="hint">Clique ou arraste a foto principal</span>
+          </div>
+        </div>
+        <div class="card">
+          <label>Imagem de referência (opcional)</label>
+          <div class="drop" id="drop2">
+            <input type="file" id="image2" name="image2" accept="image/*">
+            <span class="hint">Ex: roupa, objeto, estilo</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:1.5rem">
+        <label for="preset">Prompt pré-definido</label>
+        <select id="preset" class="select-input">
+          <!--PROMPT_OPTIONS-->
+        </select>
+        <div class="preset-filters">
+          <input type="search" id="preset-search" placeholder="Buscar preset…" autocomplete="off">
+          <select id="preset-category-filter" class="select-input" title="Categoria">
+            <option value="">Todas categorias</option>
+          </select>
+          <select id="preset-slot-filter" class="select-input" title="Slot de 5h (última edição do preset)">
+            <option value="">Qualquer slot</option>
+          </select>
+        </div>
+        <div class="prompt-admin-row">
+          <button type="button" id="prompt-new-btn" class="btn-secondary">+ Novo</button>
+          <button type="button" id="prompt-edit-btn" class="btn-secondary" disabled>Editar</button>
+          <button type="button" id="prompt-delete-btn" class="btn-danger" disabled>Remover</button>
+          <button type="button" id="prompt-save-text-btn" class="btn-secondary">Salvar texto atual</button>
+        </div>
+        <div id="prompt-editor" class="prompt-editor" hidden>
+          <p class="pe-meta" id="pe-dates"></p>
+          <div class="field-row">
+            <label for="pe-category">Categoria</label>
+            <input type="text" id="pe-category" placeholder="Ex: Fav, Custom">
+          </div>
+          <div class="field-row">
+            <label for="pe-label">Nome</label>
+            <input type="text" id="pe-label" placeholder="Nome curto do prompt">
+          </div>
+          <div class="field-row">
+            <label for="pe-text">Texto do prompt</label>
+            <textarea id="pe-text" placeholder="Texto enviado ao modelo"></textarea>
+          </div>
+          <div class="prompt-editor-actions">
+            <button type="button" id="pe-save-btn">Salvar</button>
+            <button type="button" id="pe-cancel-btn" class="btn-secondary">Cancelar</button>
+          </div>
+        </div>
+        <div class="row queue-row">
+          <div class="queue-actions">
+            <button type="button" id="queue-btn" class="btn-queue">Iniciar fila</button>
+            <button type="button" id="queue-cancel-btn" class="btn-danger" hidden>Cancelar fila</button>
+          </div>
+          <span class="queue-info" id="queue-info">Selecione um prompt — a fila processa ele e todos os seguintes na ordem do dropdown (188 prompts).</span>
+        </div>
+
+        <label for="prompt" style="margin-top:1rem">O que você quer mudar?</label>
+        <textarea id="prompt" name="prompt" placeholder="Ex: Mantenha a pessoa em &lt;image1&gt;, coloque a camisa de &lt;image2&gt; nela, preserve o rosto e o fundo." required></textarea>
+        <p class="example">Use &lt;image1&gt; para a foto principal e &lt;image2&gt; para a referência (se enviou).</p>
+
+        <div class="row">
+          <div class="field">
+            <label for="quality">Preset</label>
+            <select id="quality" name="quality" class="select-input"></select>
+          </div>
+          <div class="field field-narrow">
+            <label for="resolution">Tamanho (px)</label>
+            <input type="number" id="resolution" name="resolution" min="512" max="1536" step="64" value="1024">
+          </div>
+          <div class="field field-narrow">
+            <label for="steps">Passos</label>
+            <input type="number" id="steps" name="steps" min="4" max="50" step="1" value="25">
+          </div>
+          <button type="submit" id="btn">Gerar imagem</button>
+        </div>
+        <p class="example">Imagens de celular (ex. 1440×2560) são reduzidas antes de gerar — isso acelera muito.</p>
+
+        <div class="status" id="status"></div>
+        <div class="result" id="result"></div>
+      </div>
+    </form>
+
+    <div class="gallery">
+      <div class="gallery-head">
+        <h2 id="gallery-title">Galeria</h2>
+        <div class="gallery-actions">
+          <select id="gallery-filter" class="select-input" title="Filtro da galeria">
+            <option value="all">Todas as imagens</option>
+            <option value="stale">Só preset desatualizado</option>
+          </select>
+          <select id="gallery-slot-filter" class="select-input" title="Preset editado neste slot (5h)">
+            <option value="">Qualquer slot</option>
+          </select>
+          <button type="button" id="regen-stale-btn" class="btn-queue">Regerar presets novos</button>
+          <button type="button" id="download-all-btn" class="btn-secondary">Baixar todas</button>
+          <button type="button" id="delete-all-btn" class="btn-danger">Apagar todas</button>
+        </div>
+      </div>
+      <div class="thumbs" id="gallery"></div>
+    </div>
+  </div>
+
+  <div id="lightbox" class="lightbox" hidden tabindex="-1">
+    <button type="button" class="lightbox-close" id="lightbox-close" aria-label="Fechar">×</button>
+    <button type="button" class="lightbox-nav lightbox-prev" id="lightbox-prev" aria-label="Anterior">‹</button>
+    <button type="button" class="lightbox-nav lightbox-next" id="lightbox-next" aria-label="Próximo">›</button>
+    <div class="lightbox-content" id="lightbox-content">
+      <img id="lightbox-img" src="" alt="">
+      <div class="lightbox-counter" id="lightbox-counter"></div>
+      <div class="lightbox-clear-prompt" id="lightbox-clear-prompt" hidden>
+        <button type="button" id="lightbox-clear-prompt-btn">Apagar preset da lista</button>
+      </div>
+      <div class="lightbox-delete-prompt" id="lightbox-delete-prompt" hidden>
+        Apagar esta imagem? <kbd>Enter</kbd> confirmar · <kbd>Esc</kbd> cancelar
+      </div>
+      <div class="lightbox-hint"><kbd>←</kbd> <kbd>→</kbd> navegar · <kbd>D</kbd> apagar · <kbd>Esc</kbd> fechar</div>
+    </div>
+  </div>
+
+  <script id="prompt-data" type="application/json"><!--PROMPT_DATA--></script>
+  <script id="model-data" type="application/json"><!--MODEL_DATA--></script>
+  <script>
+    function setupDrop(dropEl, inputEl) {
+      dropEl.addEventListener('click', () => inputEl.click());
+      dropEl.addEventListener('dragover', e => { e.preventDefault(); dropEl.classList.add('dragover'); });
+      dropEl.addEventListener('dragleave', () => dropEl.classList.remove('dragover'));
+      dropEl.addEventListener('drop', e => {
+        e.preventDefault();
+        dropEl.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+          inputEl.files = e.dataTransfer.files;
+          preview(inputEl, dropEl);
+        }
+      });
+      inputEl.addEventListener('change', () => preview(inputEl, dropEl));
+    }
+
+    function preview(input, drop) {
+      const file = input.files[0];
+      if (!file) return;
+      drop.querySelectorAll('img.preview-thumb').forEach(el => el.remove());
+      const img = document.createElement('img');
+      img.className = 'preview-thumb';
+      img.src = URL.createObjectURL(file);
+      const hint = drop.querySelector('.hint');
+      if (hint) hint.textContent = file.name;
+      const fileInput = drop.querySelector('input[type=file]');
+      if (fileInput) drop.insertBefore(img, fileInput.nextSibling);
+      else drop.appendChild(img);
+    }
+
+    setupDrop(document.getElementById('drop1'), document.getElementById('image1'));
+    setupDrop(document.getElementById('drop2'), document.getElementById('image2'));
+
+    const statusEl = document.getElementById('status');
+    const resultEl = document.getElementById('result');
+    const btn = document.getElementById('btn');
+
+    function setStatus(msg, type) {
+      statusEl.textContent = msg;
+      statusEl.className = 'status show ' + type;
+    }
+
+    let promptPresets = JSON.parse(document.getElementById('prompt-data').textContent || '[]');
+    const modelData = JSON.parse(document.getElementById('model-data').textContent || '{}');
+    const modelHint = document.getElementById('model-hint');
+    const modelSelect = document.getElementById('model');
+    const qualitySelect = document.getElementById('quality');
+    const resolutionInput = document.getElementById('resolution');
+    const stepsInput = document.getElementById('steps');
+    const STORAGE_KEY = 'qwen-editor-settings';
+
+    function loadAllSettings() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      } catch {
+        return {};
+      }
+    }
+
+    function saveCurrentSettings() {
+      const model = modelSelect.value || 'qwen21';
+      const all = loadAllSettings();
+      all[model] = {
+        resolution: parseInt(resolutionInput.value, 10) || 1024,
+        steps: parseInt(stepsInput.value, 10) || 25,
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+    }
+
+    function applyPreset(presetKey) {
+      const model = modelSelect.value || 'qwen21';
+      const info = modelData[model] || modelData.qwen21;
+      const preset = info?.presets?.[presetKey];
+      if (!preset) return;
+      resolutionInput.value = preset.resolution;
+      stepsInput.value = preset.steps;
+      saveCurrentSettings();
+    }
+
+    function loadModelSettings(model) {
+      const saved = loadAllSettings()[model];
+      if (saved) {
+        resolutionInput.value = saved.resolution;
+        stepsInput.value = saved.steps;
+        return;
+      }
+      const presets = (modelData[model] || modelData.qwen21)?.presets || {};
+      const normal = presets.normal || Object.values(presets)[0];
+      if (normal) {
+        resolutionInput.value = normal.resolution;
+        stepsInput.value = normal.steps;
+      }
+    }
+
+    function refreshQualityOptions() {
+      const model = modelSelect.value || 'qwen21';
+      const info = modelData[model] || modelData.qwen21;
+      if (!info) return;
+      modelHint.textContent = info.hint || '';
+      const presets = info.presets || {};
+      const current = qualitySelect.value || 'normal';
+      qualitySelect.innerHTML = Object.entries(presets).map(([key, p]) =>
+        `<option value="${key}">${p.label}</option>`
+      ).join('');
+      if (presets[current]) qualitySelect.value = current;
+      else qualitySelect.value = 'normal';
+      loadModelSettings(model);
+    }
+
+    modelSelect.addEventListener('change', refreshQualityOptions);
+    qualitySelect.addEventListener('change', () => applyPreset(qualitySelect.value));
+    resolutionInput.addEventListener('change', saveCurrentSettings);
+    stepsInput.addEventListener('change', saveCurrentSettings);
+    refreshQualityOptions();
+
+    const promptEl = document.getElementById('prompt');
+    const presetEl = document.getElementById('preset');
+    const promptEditorEl = document.getElementById('prompt-editor');
+    const peCategory = document.getElementById('pe-category');
+    const peLabel = document.getElementById('pe-label');
+    const peText = document.getElementById('pe-text');
+    const promptEditBtn = document.getElementById('prompt-edit-btn');
+    const promptDeleteBtn = document.getElementById('prompt-delete-btn');
+    let promptEdited = false;
+    let promptEditorMode = null;
+    let promptEditorId = null;
+    let selectedPresetId = '';
+
+    function getActivePrompt() {
+      return promptEl.value.trim();
+    }
+
+    const presetSearchEl = document.getElementById('preset-search');
+    const presetCategoryFilterEl = document.getElementById('preset-category-filter');
+    const presetSlotFilterEl = document.getElementById('preset-slot-filter');
+    const gallerySlotFilterEl = document.getElementById('gallery-slot-filter');
+    let presetTimeSlots = [];
+    const peDatesEl = document.getElementById('pe-dates');
+    const galleryFilterEl = document.getElementById('gallery-filter');
+
+    function getFilteredPresets() {
+      let list = promptPresets.slice();
+      const q = (presetSearchEl?.value || '').trim().toLowerCase();
+      if (q) {
+        list = list.filter(p =>
+          (p.label || '').toLowerCase().includes(q) ||
+          (p.text || '').toLowerCase().includes(q) ||
+          (p.category || '').toLowerCase().includes(q)
+        );
+      }
+      const cat = presetCategoryFilterEl?.value || '';
+      if (cat) list = list.filter(p => p.category === cat);
+      const slot = presetSlotFilterEl?.value || '';
+      if (slot) list = list.filter(p => p.updated_slot === slot);
+      return list;
+    }
+
+    function refreshPresetSlotFilters() {
+      const slots = presetTimeSlots.length
+        ? presetTimeSlots
+        : [...new Map(
+            promptPresets
+              .filter(p => p.updated_slot)
+              .map(p => [p.updated_slot, { key: p.updated_slot, label: p.updated_slot_label, count: 0 }])
+          ).values()];
+      const byKey = {};
+      for (const p of promptPresets) {
+        if (!p.updated_slot) continue;
+        byKey[p.updated_slot] = (byKey[p.updated_slot] || 0) + 1;
+      }
+      const sorted = [...slots].sort((a, b) => String(b.key).localeCompare(String(a.key)));
+      const opts = sorted.map(s => {
+        const n = byKey[s.key] ?? s.count ?? 0;
+        const lab = s.label || s.key;
+        return `<option value="${escHtml(s.key)}">${escHtml(lab)} (${n})</option>`;
+      }).join('');
+      const curP = presetSlotFilterEl?.value || '';
+      const curG = gallerySlotFilterEl?.value || '';
+      if (presetSlotFilterEl) {
+        presetSlotFilterEl.innerHTML = '<option value="">Qualquer slot</option>' + opts;
+        if (curP && sorted.some(s => s.key === curP)) presetSlotFilterEl.value = curP;
+      }
+      if (gallerySlotFilterEl) {
+        gallerySlotFilterEl.innerHTML = '<option value="">Qualquer slot</option>' + opts;
+        if (curG && sorted.some(s => s.key === curG)) gallerySlotFilterEl.value = curG;
+      }
+    }
+
+    function refreshPresetCategoryFilter() {
+      if (!presetCategoryFilterEl) return;
+      const cats = [...new Set(promptPresets.map(p => p.category))].sort();
+      const cur = presetCategoryFilterEl.value;
+      presetCategoryFilterEl.innerHTML =
+        '<option value="">Todas categorias</option>' +
+        cats.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+      if (cats.includes(cur)) presetCategoryFilterEl.value = cur;
+    }
+
+    function renderPresetOptions(selectId) {
+      refreshPresetCategoryFilter();
+      refreshPresetSlotFilters();
+      const filtered = getFilteredPresets();
+      const byCategory = {};
+      filtered.forEach(p => {
+        (byCategory[p.category] ||= []).push(p);
+      });
+      const categories = Object.keys(byCategory).sort();
+      const parts = ['<option value="">— Escolha um prompt salvo —</option>'];
+      for (const category of categories) {
+        parts.push(`<optgroup label="${category.replace(/"/g, '&quot;')}">`);
+        for (const item of byCategory[category]) {
+          const dateHint = item.updated_slot_label
+            ? ` · ${item.updated_slot_label}`
+            : (item.updated_at_iso ? ` · ${item.updated_at_iso}` : '');
+          const label = `${item.order}. ${item.label}${dateHint}`.replace(/</g, '&lt;');
+          const id = String(item.id || "").replace(/"/g, "&quot;");
+          parts.push(`<option value="${id}">${label}</option>`);
+        }
+        parts.push('</optgroup>');
+      }
+      presetEl.innerHTML = parts.join('\n');
+      if (selectId && filtered.some(p => p.id === selectId)) {
+        presetEl.value = selectId;
+      }
+      updatePromptAdminButtons();
+    }
+
+    async function reloadPrompts(selectId) {
+      const res = await fetch('/api/prompts');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      promptPresets = data.prompts || [];
+      presetTimeSlots = data.time_slots || [];
+      renderPresetOptions(selectId);
+      const countEl = document.getElementById('queue-info');
+      if (countEl) {
+        countEl.textContent = `Selecione um prompt — a fila processa ele e todos os seguintes na ordem do dropdown (${promptPresets.length} prompts).`;
+      }
+    }
+
+    function updatePromptAdminButtons() {
+      const id = presetEl.value || selectedPresetId;
+      const hasSelection = Boolean(id);
+      promptEditBtn.disabled = !hasSelection;
+      promptDeleteBtn.disabled = !hasSelection;
+    }
+
+    function openPromptEditor(mode, preset) {
+      promptEditorMode = mode;
+      promptEditorId = preset?.id || null;
+      peCategory.value = preset?.category || 'Custom';
+      peLabel.value = preset?.label || '';
+      peText.value = preset?.text || getActivePrompt();
+      if (peDatesEl) {
+        if (preset?.updated_at_iso) {
+          const slot = preset.updated_slot_label ? ` · slot ${preset.updated_slot_label}` : '';
+          const created = preset.created_at_iso ? `Criado: ${preset.created_at_iso}. ` : '';
+          peDatesEl.textContent = `${created}Atualizado: ${preset.updated_at_iso}${slot}`;
+        } else if (mode === 'edit') {
+          peDatesEl.textContent = 'Preset sem data salva — será gravada ao salvar (slot de 5h, horário de Brasília).';
+        } else {
+          peDatesEl.textContent = 'Novo preset — data e slot (5h, Brasília) ao salvar.';
+        }
+      }
+      promptEditorEl.hidden = false;
+    }
+
+    function closePromptEditor() {
+      promptEditorMode = null;
+      promptEditorId = null;
+      promptEditorEl.hidden = true;
+    }
+
+    async function savePromptEditor() {
+      const payload = {
+        category: peCategory.value.trim(),
+        label: peLabel.value.trim(),
+        text: peText.value.trim(),
+      };
+      if (!payload.text) {
+        alert('Texto do prompt é obrigatório.');
+        return;
+      }
+      let res, data;
+      if (promptEditorMode === 'edit' && promptEditorId) {
+        res = await fetch('/api/prompts/' + encodeURIComponent(promptEditorId), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        res = await fetch('/api/prompts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
+      data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert('Erro ao salvar: ' + (data.error || res.statusText));
+        return;
+      }
+      const savedId = data.prompt?.id;
+      await reloadPrompts(savedId);
+      if (savedId) {
+        const saved = promptPresets.find(p => p.id === savedId);
+        if (saved) {
+          promptEl.value = saved.text;
+          promptEdited = false;
+        }
+      }
+      closePromptEditor();
+    }
+
+    async function deleteSelectedPrompt() {
+      const id = presetEl.value;
+      if (!id) return;
+      const preset = promptPresets.find(p => p.id === id);
+      const name = preset?.label || 'este prompt';
+      if (!confirm(`Remover "${name}" permanentemente?`)) return;
+      const res = await fetch('/api/prompts/' + encodeURIComponent(id), { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert('Erro ao remover: ' + (data.error || res.statusText));
+        return;
+      }
+      presetEl.value = '';
+      await reloadPrompts();
+      updatePromptAdminButtons();
+    }
+
+    presetEl.addEventListener('change', () => {
+      const id = presetEl.value;
+      selectedPresetId = id;
+      promptEdited = false;
+      updatePromptAdminButtons();
+      if (id === '') return;
+      const preset = promptPresets.find(p => p.id === id);
+      if (preset) promptEl.value = preset.text;
+    });
+
+    promptEl.addEventListener('input', () => {
+      promptEdited = true;
+    });
+
+    document.getElementById('prompt-new-btn').addEventListener('click', () => openPromptEditor('new'));
+    document.getElementById('prompt-save-text-btn').addEventListener('click', () => {
+      if (!getActivePrompt()) {
+        alert('Digite um texto no campo de prompt primeiro.');
+        return;
+      }
+      openPromptEditor('new', { category: 'Custom', label: '', text: getActivePrompt() });
+    });
+    promptEditBtn.addEventListener('click', () => {
+      const id = presetEl.value || selectedPresetId;
+      const preset = promptPresets.find(p => p.id === id);
+      if (preset) openPromptEditor('edit', preset);
+      else alert('Selecione um prompt no dropdown antes de editar.');
+    });
+    promptDeleteBtn.addEventListener('click', deleteSelectedPrompt);
+    document.getElementById('pe-save-btn').addEventListener('click', savePromptEditor);
+    document.getElementById('pe-cancel-btn').addEventListener('click', closePromptEditor);
+    updatePromptAdminButtons();
+
+    let lightboxFiles = [];
+    let lightboxIndex = 0;
+    let lightboxDeleteConfirm = false;
+
+    const lightboxEl = document.getElementById('lightbox');
+    const lightboxImg = document.getElementById('lightbox-img');
+    const lightboxContent = document.getElementById('lightbox-content');
+    const lightboxCounter = document.getElementById('lightbox-counter');
+    const lightboxDeletePrompt = document.getElementById('lightbox-delete-prompt');
+
+    async function deleteImageFile(filename) {
+      const res = await fetch('/api/image/' + encodeURIComponent(filename), { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      return data;
+    }
+
+    async function deleteImage(filename, elToRemove) {
+      if (!confirm('Apagar esta imagem permanentemente?')) return;
+      try {
+        await deleteImageFile(filename);
+      } catch (err) {
+        alert('Erro ao apagar: ' + err.message);
+        return;
+      }
+      if (elToRemove) elToRemove.remove();
+      else loadGallery();
+      document.querySelectorAll(`.result-wrap[data-filename="${filename}"]`).forEach(el => el.remove());
+    }
+
+    function updateLightboxDeleteUi() {
+      lightboxDeletePrompt.hidden = !lightboxDeleteConfirm;
+      lightboxContent.classList.toggle('delete-pending', lightboxDeleteConfirm);
+    }
+
+    const lightboxClearPrompt = document.getElementById('lightbox-clear-prompt');
+    const lightboxClearPromptBtn = document.getElementById('lightbox-clear-prompt-btn');
+
+    function updateLightboxImage() {
+      if (!lightboxFiles.length) return;
+      const filename = lightboxFiles[lightboxIndex];
+      lightboxImg.src = '/output/' + encodeURIComponent(filename);
+      const meta = lightboxMeta[filename] || {};
+      const extra = imageMetaCaption(meta);
+      lightboxCounter.innerHTML = `${lightboxIndex + 1} / ${lightboxFiles.length}<span class="lightbox-meta">${extra}</span>`;
+      document.getElementById('lightbox-prev').disabled = lightboxIndex <= 0;
+      document.getElementById('lightbox-next').disabled = lightboxIndex >= lightboxFiles.length - 1;
+      if (lightboxClearPrompt) {
+        lightboxClearPrompt.hidden = !imageHasPromptCaption(meta);
+      }
+    }
+
+    let lightboxMeta = {};
+
+    async function refreshLightboxFiles() {
+      const res = await fetch('/api/gallery?all=1');
+      const data = await res.json();
+      lightboxFiles = (data.images || []).map(i => i.filename);
+      lightboxMeta = {};
+      (data.images || []).forEach(i => { lightboxMeta[i.filename] = i; });
+    }
+
+    async function openLightbox(filename) {
+      await refreshLightboxFiles();
+      if (!lightboxFiles.length) return;
+      const idx = lightboxFiles.indexOf(filename);
+      lightboxIndex = idx >= 0 ? idx : 0;
+      lightboxDeleteConfirm = false;
+      updateLightboxDeleteUi();
+      lightboxEl.hidden = false;
+      document.body.style.overflow = 'hidden';
+      updateLightboxImage();
+      lightboxEl.focus();
+    }
+
+    function closeLightbox() {
+      lightboxEl.hidden = true;
+      lightboxDeleteConfirm = false;
+      updateLightboxDeleteUi();
+      document.body.style.overflow = '';
+      lightboxImg.src = '';
+    }
+
+    function lightboxPrev() {
+      if (lightboxDeleteConfirm || lightboxIndex <= 0) return;
+      lightboxIndex--;
+      updateLightboxImage();
+    }
+
+    function lightboxNext() {
+      if (lightboxDeleteConfirm || lightboxIndex >= lightboxFiles.length - 1) return;
+      lightboxIndex++;
+      updateLightboxImage();
+    }
+
+    function startLightboxDelete() {
+      if (!lightboxFiles.length) return;
+      lightboxDeleteConfirm = true;
+      updateLightboxDeleteUi();
+    }
+
+    function cancelLightboxDelete() {
+      lightboxDeleteConfirm = false;
+      updateLightboxDeleteUi();
+    }
+
+    async function confirmLightboxDelete() {
+      const filename = lightboxFiles[lightboxIndex];
+      try {
+        await deleteImageFile(filename);
+      } catch (err) {
+        alert('Erro ao apagar: ' + err.message);
+        cancelLightboxDelete();
+        return;
+      }
+      lightboxFiles.splice(lightboxIndex, 1);
+      document.querySelectorAll(`.result-wrap[data-filename="${filename}"]`).forEach(el => el.remove());
+      await loadGallery();
+      lightboxDeleteConfirm = false;
+      if (!lightboxFiles.length) {
+        closeLightbox();
+        return;
+      }
+      if (lightboxIndex >= lightboxFiles.length) lightboxIndex = lightboxFiles.length - 1;
+      updateLightboxDeleteUi();
+      updateLightboxImage();
+    }
+
+    lightboxClearPromptBtn?.addEventListener('click', () => {
+      const filename = lightboxFiles[lightboxIndex];
+      if (!filename) return;
+      clearImagePrompt(filename, document.querySelector(`.thumb-card[data-filename="${CSS.escape(filename)}"]`))
+        .catch(e => alert(e.message));
+    });
+
+    document.getElementById('lightbox-close').addEventListener('click', closeLightbox);
+    document.getElementById('lightbox-prev').addEventListener('click', lightboxPrev);
+    document.getElementById('lightbox-next').addEventListener('click', lightboxNext);
+    lightboxEl.addEventListener('click', e => {
+      if (e.target === lightboxEl) closeLightbox();
+    });
+
+    document.addEventListener('keydown', e => {
+      if (lightboxEl.hidden) return;
+      if (lightboxDeleteConfirm) {
+        if (e.key === 'Enter') { e.preventDefault(); confirmLightboxDelete(); return; }
+        if (e.key === 'Escape') { e.preventDefault(); cancelLightboxDelete(); return; }
+        return;
+      }
+      if (e.key === 'Escape') { e.preventDefault(); closeLightbox(); return; }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); lightboxPrev(); return; }
+      if (e.key === 'ArrowRight') { e.preventDefault(); lightboxNext(); return; }
+      if (e.key === 'd' || e.key === 'D') { e.preventDefault(); startLightboxDelete(); }
+    });
+
+    function resultHtml(filename) {
+      return `<div class="result-wrap" data-filename="${filename}">
+        <button type="button" class="delete-btn" onclick="deleteImage('${filename}', this.closest('.result-wrap'))">Apagar</button>
+        <img class="thumb-open" src="/output/${filename}" alt="Resultado" onclick="openLightbox('${filename}')">
+      </div>`;
+    }
+
+    function escHtml(s) {
+      return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function formatImageWhen(item) {
+      const ts = item.created_at || item.mtime;
+      const ms = typeof ts === 'number' ? ts * 1000 : Date.parse(ts);
+      return new Date(ms).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+    }
+
+    function imageHasPromptCaption(item) {
+      if (!item || item.prompt_cleared) return false;
+      if (item.prompt_label) return true;
+      const id = item.prompt_id || '';
+      return id && id !== 'custom';
+    }
+
+    function imageMetaCaption(item) {
+      const when = formatImageWhen(item);
+      const stale = item.needs_regen
+        ? '<span class="badge-stale">preset atualizado — regerar</span><br>'
+        : '';
+      if (!imageHasPromptCaption(item)) return stale + escHtml(when);
+      const id = item.prompt_id && item.prompt_id !== 'custom' ? item.prompt_id : (item.prompt_id || 'custom');
+      const label = item.prompt_label ? `<br>${escHtml(item.prompt_label)}` : '';
+      const slot = item.preset_slot_label ? `<br>preset: ${escHtml(item.preset_slot_label)}` : '';
+      return stale + `${escHtml(when)}<br>id: ${escHtml(id)}${label}${slot}`;
+    }
+
+    async function clearImagePrompt(filename, elToRefresh) {
+      const meta = lightboxMeta[filename] || {};
+      const presetName = meta.prompt_label || meta.prompt_id || 'este prompt';
+      const msg = meta.prompt_id && meta.prompt_id !== 'custom'
+        ? `Remover o preset «${presetName}» da lista e apagar a legenda desta foto?`
+        : 'Apagar a legenda do prompt desta foto? (não há preset salvo vinculado)';
+      if (!confirm(msg)) return;
+      const res = await fetch('/api/image/' + encodeURIComponent(filename) + '/prompt', { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Falha ao apagar');
+      if (data.preset_deleted && Array.isArray(data.prompts)) {
+        promptPresets = data.prompts;
+        renderPresetOptions();
+        updatePromptAdminButtons();
+      } else if (data.preset_deleted) {
+        await reloadPrompts();
+      }
+      if (lightboxMeta[filename]) {
+        lightboxMeta[filename] = { ...lightboxMeta[filename], ...data.image, prompt_cleared: true, prompt_id: '', prompt_label: '' };
+      }
+      if (elToRefresh) {
+        const metaEl = elToRefresh.querySelector('.thumb-meta');
+        if (metaEl) metaEl.innerHTML = imageMetaCaption(lightboxMeta[filename] || data.image || { prompt_cleared: true });
+        const actions = elToRefresh.querySelector('.thumb-meta-actions');
+        if (actions) actions.remove();
+        const btn = elToRefresh.querySelector('.clear-prompt-btn');
+        if (btn) btn.remove();
+      }
+      if (!lightboxEl.hidden && lightboxFiles[lightboxIndex] === filename) updateLightboxImage();
+    }
+
+    async function loadGallery() {
+      const staleOnly = galleryFilterEl?.value === 'stale';
+      const gSlot = gallerySlotFilterEl?.value || '';
+      let q = '/api/gallery?all=1' + (staleOnly ? '&stale=1' : '');
+      if (gSlot) q += '&slot=' + encodeURIComponent(gSlot);
+      const res = await fetch(q);
+      const data = await res.json();
+      const title = document.getElementById('gallery-title');
+      const staleCount = data.stale_count ?? 0;
+      if (title) {
+        title.textContent = staleOnly
+          ? `Galeria — preset desatualizado (${(data.images || []).length})`
+          : `Galeria (${(data.images || []).length} imagens · ${staleCount} para regerar)`;
+      }
+      const el = document.getElementById('gallery');
+      el.innerHTML = (data.images || []).map(i => {
+        const promptBtn = imageHasPromptCaption(i)
+          ? `<button type="button" class="clear-prompt-btn" title="Remove preset da lista e legenda" onclick="event.stopPropagation(); clearImagePrompt('${i.filename}', this.closest('.thumb-card')).catch(e => alert(e.message))">Preset</button>`
+          : '';
+        const metaLink = imageHasPromptCaption(i)
+          ? `<div class="thumb-meta-actions"><button type="button" onclick="clearImagePrompt('${i.filename}', this.closest('.thumb-card')).catch(e => alert(e.message))">Apagar preset da lista</button></div>`
+          : '';
+        const staleClass = i.needs_regen ? ' stale-regen' : '';
+        return `<div class="thumb-card${staleClass}" data-filename="${i.filename}">
+          <div class="thumb-img-wrap">
+            ${promptBtn}
+            <button type="button" class="delete-btn" onclick="deleteImage('${i.filename}', this.closest('.thumb-card'))">Apagar</button>
+            <img class="thumb-open" src="/output/${i.filename}" alt="" onclick="openLightbox('${i.filename}')">
+          </div>
+          <div class="thumb-meta">${imageMetaCaption(i)}${metaLink}</div>
+        </div>`;
+      }).join('');
+    }
+
+    const queueBtn = document.getElementById('queue-btn');
+    const queueCancelBtn = document.getElementById('queue-cancel-btn');
+    const queueInfo = document.getElementById('queue-info');
+    const queueState = { active: false, paused: false, cancelled: false, items: [], index: 0 };
+
+    function updateQueueUi() {
+      queueCancelBtn.hidden = !queueState.active;
+      if (!queueState.active) {
+        queueBtn.textContent = 'Iniciar fila';
+        queueBtn.classList.remove('paused');
+        return;
+      }
+      if (queueState.paused) {
+        queueBtn.textContent = 'Continuar fila';
+        queueBtn.classList.add('paused');
+      } else {
+        queueBtn.textContent = 'Pausar fila';
+        queueBtn.classList.remove('paused');
+      }
+    }
+
+    function cancelQueue() {
+      if (!queueState.active) return;
+      queueState.cancelled = true;
+      queueState.active = false;
+      queueState.paused = false;
+      btn.disabled = false;
+      updateQueueUi();
+    }
+
+    function getQueueItems() {
+      const startId = document.getElementById('preset').value;
+      if (!startId) return [];
+      const idx = promptPresets.findIndex(p => p.id === startId);
+      if (idx < 0) return [];
+      return promptPresets.slice(idx);
+    }
+
+    function waitWhilePaused() {
+      return new Promise(resolve => {
+        const tick = () => {
+          if (!queueState.active || !queueState.paused) resolve();
+          else setTimeout(tick, 400);
+        };
+        tick();
+      });
+    }
+
+    async function pollJob(jobId, statusPrefix = '') {
+      let elapsed = 0;
+      while (true) {
+        if (statusPrefix && !queueState.active) {
+          throw new Error('Fila cancelada');
+        }
+        const res = await fetch('/api/status/' + jobId);
+        const job = await res.json();
+        if (job.status === 'queued' || job.status === 'running') {
+          const eta = (job.model === 'rapid') ? '~1 min'
+            : (job.model === 'qwen21_pruna') ? '~2 min'
+            : '~5 min';
+          const prefix = statusPrefix ? statusPrefix + ' — ' : '';
+          const promptPreview = job.prompt ? ` · "${job.prompt.slice(0, 50)}${job.prompt.length > 50 ? '…' : ''}"` : '';
+          setStatus(`${prefix}Gerando... ${Math.floor(elapsed / 60)}m ${elapsed % 60}s (${eta})${promptPreview}`, 'running');
+          await new Promise(r => setTimeout(r, 3000));
+          elapsed += 3;
+          continue;
+        }
+        if (job.status === 'error') {
+          throw new Error(job.error || 'Erro na geração');
+        }
+        if (job.status === 'done' && job.images?.length) {
+          const sec = Math.round((job.finished_at - job.started_at) || 0);
+          const prefix = statusPrefix ? statusPrefix + ' — ' : '';
+          setStatus(`${prefix}Pronto em ${sec}s!`, 'done');
+          resultEl.innerHTML = job.images.map(f => resultHtml(f)).join('');
+          loadGallery();
+          return job;
+        }
+        await new Promise(r => setTimeout(r, 3000));
+        elapsed += 3;
+      }
+    }
+
+    async function submitGeneration(statusPrefix = '') {
+      const prompt = getActivePrompt();
+      if (!prompt) throw new Error('Prompt obrigatório');
+      const fd = new FormData(document.getElementById('form'));
+      fd.set('prompt', prompt);
+      const presetId = presetEl.value || '';
+      const preset = promptPresets.find(p => p.id === presetId);
+      fd.set('prompt_preset_id', presetId || 'custom');
+      fd.set('prompt_preset_label', preset ? preset.label : '');
+      const res = await fetch('/api/generate', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      if (data.resize?.image1 && !statusPrefix) {
+        const r = data.resize.image1;
+        setStatus(`Redimensionado: ${r.from[0]}×${r.from[1]} → ${r.to[0]}×${r.to[1]}. Gerando...`, 'running');
+      }
+      return pollJob(data.job_id, statusPrefix);
+    }
+
+    async function runQueue() {
+      if (queueState.active) {
+        queueState.paused = !queueState.paused;
+        updateQueueUi();
+        queueInfo.textContent = queueState.paused
+          ? `Fila pausada em ${queueState.index + 1}/${queueState.items.length}`
+          : `Fila em andamento: ${queueState.index + 1}/${queueState.items.length}`;
+        return;
+      }
+
+      const items = getQueueItems();
+      if (!items.length) {
+        alert('Selecione um prompt no dropdown para iniciar a fila.');
+        return;
+      }
+      if (!document.getElementById('image1').files[0]) {
+        alert('Envie a imagem principal antes de iniciar a fila.');
+        return;
+      }
+
+      queueState.active = true;
+      queueState.paused = false;
+      queueState.items = items;
+      queueState.index = 0;
+      btn.disabled = true;
+      updateQueueUi();
+
+      while (queueState.index < queueState.items.length && queueState.active) {
+        await waitWhilePaused();
+        if (!queueState.active) break;
+
+        const item = queueState.items[queueState.index];
+        const pos = `${queueState.index + 1}/${queueState.items.length}`;
+        const useCustom = queueState.index === 0 && promptEdited && getActivePrompt();
+        promptEl.value = useCustom ? getActivePrompt() : item.text;
+        presetEl.value = item.id;
+        queueInfo.textContent = `Fila: ${pos} — ${useCustom ? 'prompt customizado' : item.label}`;
+
+        try {
+          await submitGeneration(`Fila ${pos}`);
+        } catch (err) {
+          if (queueState.cancelled) break;
+          setStatus('Erro na fila: ' + err.message, 'error');
+          queueState.active = false;
+          break;
+        }
+        if (queueState.cancelled) break;
+        queueState.index++;
+      }
+
+      if (queueState.cancelled) {
+        const done = queueState.index;
+        const total = queueState.items.length;
+        setStatus(`Fila cancelada — ${done} de ${total} concluído(s).`, 'error');
+        queueInfo.textContent = 'Fila cancelada. A geração em andamento pode ainda terminar no servidor.';
+      } else if (queueState.index >= queueState.items.length) {
+        setStatus(`Fila concluída — ${queueState.items.length} prompt(s).`, 'done');
+        queueInfo.textContent = 'Fila concluída.';
+      } else if (!queueState.active) {
+        queueInfo.textContent = 'Fila interrompida.';
+      }
+
+      queueState.active = false;
+      queueState.paused = false;
+      queueState.cancelled = false;
+      btn.disabled = false;
+      updateQueueUi();
+    }
+
+    queueBtn.addEventListener('click', runQueue);
+    queueCancelBtn.addEventListener('click', cancelQueue);
+
+    async function downloadAllImages() {
+      const res = await fetch('/api/gallery?all=1');
+      const data = await res.json();
+      const images = data.images || [];
+      if (!images.length) {
+        alert('Nenhuma imagem para baixar.');
+        return;
+      }
+      if (!confirm(`Baixar ${images.length} imagem(ns)?`)) return;
+
+      const downloadBtn = document.getElementById('download-all-btn');
+      downloadBtn.disabled = true;
+      downloadBtn.textContent = 'Baixando...';
+
+      try {
+        if (window.showDirectoryPicker) {
+          const dir = await window.showDirectoryPicker();
+          for (let i = 0; i < images.length; i++) {
+            const filename = images[i].filename;
+            downloadBtn.textContent = `Salvando ${i + 1}/${images.length}...`;
+            const resp = await fetch('/output/' + encodeURIComponent(filename));
+            if (!resp.ok) continue;
+            const blob = await resp.blob();
+            const handle = await dir.getFileHandle(filename, { create: true });
+            const writable = await handle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+          }
+        } else {
+          for (let i = 0; i < images.length; i++) {
+            const filename = images[i].filename;
+            downloadBtn.textContent = `Baixando ${i + 1}/${images.length}...`;
+            const a = document.createElement('a');
+            a.href = '/output/' + encodeURIComponent(filename);
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            await new Promise(r => setTimeout(r, 400));
+          }
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') alert('Erro ao baixar: ' + err.message);
+      } finally {
+        downloadBtn.disabled = false;
+        downloadBtn.textContent = 'Baixar todas';
+      }
+    }
+
+    async function deleteAllImages() {
+      const res = await fetch('/api/gallery?all=1');
+      const data = await res.json();
+      const count = (data.images || []).length;
+      if (!count) {
+        alert('Nenhuma imagem para apagar.');
+        return;
+      }
+      if (!confirm(`Apagar todas as ${count} imagens permanentemente?`)) return;
+      const del = await fetch('/api/images', { method: 'DELETE' });
+      const result = await del.json().catch(() => ({}));
+      if (!del.ok) {
+        alert('Erro: ' + (result.error || del.statusText));
+        return;
+      }
+      resultEl.innerHTML = '';
+      loadGallery();
+    }
+
+    document.getElementById('download-all-btn').addEventListener('click', downloadAllImages);
+    document.getElementById('delete-all-btn').addEventListener('click', deleteAllImages);
+
+    [presetSearchEl, presetCategoryFilterEl, presetSlotFilterEl].forEach(el => {
+      if (!el) return;
+      el.addEventListener('input', () => renderPresetOptions(presetEl.value));
+      el.addEventListener('change', () => {
+        renderPresetOptions(presetEl.value);
+        if (el === presetSlotFilterEl && gallerySlotFilterEl) {
+          gallerySlotFilterEl.value = presetSlotFilterEl.value;
+          loadGallery();
+        }
+      });
+    });
+    if (galleryFilterEl) galleryFilterEl.addEventListener('change', () => loadGallery());
+    if (gallerySlotFilterEl) gallerySlotFilterEl.addEventListener('change', () => loadGallery());
+
+    async function regenerateStaleImages() {
+      const gSlot = gallerySlotFilterEl?.value || presetSlotFilterEl?.value || '';
+      let countUrl = '/api/gallery?all=1';
+      if (gSlot) countUrl += '&slot=' + encodeURIComponent(gSlot);
+      const staleCount = (await (await fetch(countUrl)).json()).stale_count || 0;
+      if (!staleCount) {
+        alert('Nenhuma imagem com preset desatualizado.');
+        return;
+      }
+      const useFilter = galleryFilterEl?.value === 'stale';
+      const msg = useFilter
+        ? `Regerar ${staleCount} imagem(ns) visíveis com filtro? Usa cada PNG como entrada e o texto atual do preset.`
+        : `Regerar todas as ${staleCount} imagem(ns) com preset desatualizado?`;
+      if (!confirm(msg)) return;
+      const regenBtn = document.getElementById('regen-stale-btn');
+      regenBtn.disabled = true;
+      setStatus('Enfileirando regerações…', 'running');
+      try {
+        const body = {
+          model: document.getElementById('model').value,
+          quality: document.getElementById('quality').value,
+          resolution: document.getElementById('resolution').value,
+          steps: document.getElementById('steps').value,
+        };
+        if (gSlot) body.preset_slot = gSlot;
+        const res = await fetch('/api/regenerate-stale', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || res.statusText);
+        let done = 0;
+        while (true) {
+          if (!data.queued) {
+            if (done === 0) setStatus(data.message || 'Nada para regerar.', 'done');
+            break;
+          }
+          const job = data.job;
+          const total = done + 1 + (data.remaining || 0);
+          setStatus(`Regerando ${done + 1}/${total}: ${job.prompt_label || job.filename}…`, 'running');
+          await pollJob(job.job_id, `Regerar ${done + 1}`);
+          done++;
+          if (!data.remaining) break;
+          const next = await fetch('/api/regenerate-stale', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          data = await next.json();
+          if (!next.ok) throw new Error(data.error || next.statusText);
+        }
+        setStatus(`Regeração concluída — ${done} imagem(ns).`, 'done');
+        loadGallery();
+      } catch (err) {
+        setStatus('Erro: ' + err.message, 'error');
+      } finally {
+        regenBtn.disabled = false;
+      }
+    }
+    document.getElementById('regen-stale-btn').addEventListener('click', regenerateStaleImages);
+
+    document.getElementById('form').addEventListener('submit', async e => {
+      e.preventDefault();
+      if (queueState.active) return;
+      btn.disabled = true;
+      resultEl.innerHTML = '';
+      setStatus('Enviando...', 'running');
+      try {
+        await submitGeneration();
+      } catch (err) {
+        setStatus('Erro: ' + err.message, 'error');
+      }
+      btn.disabled = false;
+    });
+
+    loadGallery();
+  </script>
+</body>
+</html>

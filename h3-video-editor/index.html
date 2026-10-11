@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FastH3 Trim — Vídeo</title>
+  <style>
+    :root {
+      --bg: #080a10;
+      --card: #12161f;
+      --border: #2a3142;
+      --text: #eef1f8;
+      --muted: #8b93a8;
+      --accent: #7c5cff;
+      --accent-hover: #9b82ff;
+      --error: #ff6b6b;
+      --ok: #3ecf8e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+    h1 { font-size: 1.65rem; margin-bottom: 0.35rem; }
+    .sub { color: var(--muted); margin-bottom: 1.25rem; font-size: 0.95rem; }
+    .sub a { color: var(--accent-hover); }
+    .banner { padding: 0.85rem 1rem; border-radius: 10px; margin-bottom: 1.25rem; font-size: 0.9rem; border: 1px solid #5a4020; background: #1a1408; color: #f0c878; }
+    .banner.ok { border-color: #1f5a40; background: #0d1a14; color: #9eecc4; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem; margin-bottom: 1.5rem; }
+    label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--muted); margin-bottom: 0.4rem; }
+    select, textarea, input[type=number] {
+      width: 100%; padding: 0.65rem 0.75rem; border-radius: 10px; border: 1px solid var(--border);
+      background: var(--bg); color: var(--text); font: inherit;
+    }
+    textarea { min-height: 140px; resize: vertical; }
+    .row { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem; }
+    .field { flex: 1; min-width: 140px; }
+    .drop {
+      border: 2px dashed var(--border); border-radius: 10px; padding: 1.25rem; text-align: center;
+      cursor: pointer; margin-top: 1rem; display: none;
+    }
+    .drop.show { display: block; }
+    .drop img { max-height: 100px; margin-top: 0.5rem; border-radius: 8px; }
+    .drop input { display: none; }
+    button {
+      background: var(--accent); color: #fff; border: none; border-radius: 10px;
+      padding: 0.75rem 1.4rem; font-weight: 700; cursor: pointer; margin-top: 1rem;
+    }
+    button:hover:not(:disabled) { background: var(--accent-hover); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .status { margin-top: 1rem; color: var(--muted); font-size: 0.9rem; }
+    .status.err { color: var(--error); }
+    video { width: 100%; border-radius: 10px; background: #000; margin-top: 0.75rem; }
+    .hint { font-size: 0.8rem; color: var(--muted); margin-top: 0.35rem; }
+    .gallery-item { margin-bottom: 1.5rem; }
+    .gallery-item small { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>FastH3 Trim — vídeo com áudio</h1>
+    <p class="sub">
+      Texto → MP4 (8 passos DMD, áudio nativo). Porta <strong>3002</strong>.
+      UNet: <a href="https://huggingface.co/FastVideo/FastVideo-FastH3-Comfy" target="_blank" rel="noopener">FastH3 V2 Comfy INT8</a>
+      (origem <a href="https://huggingface.co/FastVideo/FastVideo-FastH3-8-Step-V2" target="_blank" rel="noopener">8-Step-V2</a>).
+      Edição de imagem: <a href="http://192.168.2.183:3000">Qwen (3000)</a>.
+    </p>
+    <div id="banner" class="banner"></div>
+
+    <div class="card">
+      <label for="mode">Modo</label>
+      <select id="mode"></select>
+
+      <div id="drop" class="drop">
+        <span>Clique para enviar imagem inicial (I2V)</span>
+        <input type="file" id="image" accept="image/*">
+        <img id="preview" alt="" style="display:none">
+      </div>
+
+      <label for="prompt" style="margin-top:1rem">Prompt</label>
+      <textarea id="prompt" placeholder="Descreva cena, câmera e áudio (diálogo, SFX, música) no mesmo texto — o H3 gera vídeo e som juntos."></textarea>
+      <p class="hint">Dica oficial: use timeline [0s-2s] … [2s-5s], cortes secos, e o que deve ser ouvido.</p>
+
+      <div class="row">
+        <div class="field">
+          <label for="size">Tamanho</label>
+          <select id="size"></select>
+        </div>
+        <div class="field">
+          <label for="duration">Duração (seg)</label>
+          <input type="number" id="duration" min="2" max="10" step="0.5" value="3">
+        </div>
+        <div class="field">
+          <label for="seed">Seed</label>
+          <input type="number" id="seed" placeholder="aleatório">
+        </div>
+      </div>
+
+      <button type="button" id="go">Gerar vídeo</button>
+      <div class="status" id="status"></div>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size:1.1rem;margin-bottom:0.5rem">Resultado</h2>
+      <div id="player"></div>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size:1.1rem;margin-bottom:0.75rem">Galeria</h2>
+      <div id="gallery"></div>
+    </div>
+  </div>
+
+  <script>
+    const ASSETS = <!--ASSETS-->;
+    const MODES = <!--MODES-->;
+    const SIZES = <!--SIZES-->;
+
+    const modeEl = document.getElementById('mode');
+    const drop = document.getElementById('drop');
+    const imageInput = document.getElementById('image');
+    const preview = document.getElementById('preview');
+    const sizeEl = document.getElementById('size');
+    const goBtn = document.getElementById('go');
+    const statusEl = document.getElementById('status');
+    const banner = document.getElementById('banner');
+
+    Object.entries(MODES).forEach(([k, v]) => {
+      const o = document.createElement('option');
+      o.value = k; o.textContent = v.label;
+      modeEl.appendChild(o);
+    });
+    Object.entries(SIZES).forEach(([k, v]) => {
+      const o = document.createElement('option');
+      o.value = k; o.textContent = v.label;
+      sizeEl.appendChild(o);
+    });
+
+    function mediaUrl(file) {
+      const q = file.subfolder ? '?subfolder=' + encodeURIComponent(file.subfolder) : '';
+      return '/media/' + encodeURIComponent(file.filename) + q;
+    }
+
+    function setBanner() {
+      if (ASSETS.ready) {
+        banner.className = 'banner ok';
+        banner.textContent = 'FastH3 Trim pronto. Evite Qwen + vídeo ao mesmo tempo na 3060.';
+        goBtn.disabled = false;
+      } else {
+        banner.className = 'banner';
+        banner.textContent =
+          'Modelos incompletos. No servidor: cd ~/h3-video-editor && ./download_fastvideo_trim.py — faltando: '
+          + (ASSETS.missing || []).join(', ');
+        goBtn.disabled = true;
+      }
+    }
+    setBanner();
+
+    modeEl.addEventListener('change', () => {
+      const m = MODES[modeEl.value];
+      drop.classList.toggle('show', m && m.needs_image);
+      setBanner();
+    });
+    modeEl.dispatchEvent(new Event('change'));
+
+    drop.addEventListener('click', () => imageInput.click());
+    imageInput.addEventListener('change', () => {
+      const f = imageInput.files[0];
+      if (!f) return;
+      preview.src = URL.createObjectURL(f);
+      preview.style.display = 'block';
+    });
+
+    async function loadGallery() {
+      const r = await fetch('/api/gallery');
+      const data = await r.json();
+      const el = document.getElementById('gallery');
+      el.innerHTML = '';
+      (data.videos || []).forEach(v => {
+        const div = document.createElement('div');
+        div.className = 'gallery-item';
+        const url = mediaUrl(v);
+        div.innerHTML = '<small>' + v.filename + '</small>';
+        const vid = document.createElement('video');
+        vid.controls = true; vid.src = url;
+        div.appendChild(vid);
+        el.appendChild(div);
+      });
+    }
+
+    async function poll(jobId) {
+      for (let i = 0; i < 900; i++) {
+        const r = await fetch('/api/status/' + jobId);
+        const j = await r.json();
+        if (j.status === 'running') statusEl.textContent = 'ComfyUI gerando (vídeo + áudio)… pode demorar.';
+        if (j.status === 'done' && j.outputs && j.outputs[0]) {
+          statusEl.textContent = 'Concluído.';
+          const file = j.outputs[0];
+          const url = mediaUrl(file);
+          document.getElementById('player').innerHTML = '<video controls autoplay src="' + url + '"></video>';
+          await loadGallery();
+          return;
+        }
+        if (j.status === 'error') {
+          statusEl.className = 'status err';
+          statusEl.textContent = j.error || 'Erro';
+          return;
+        }
+        await new Promise(r => setTimeout(r, 4000));
+      }
+      statusEl.className = 'status err';
+      statusEl.textContent = 'Timeout';
+    }
+
+    goBtn.addEventListener('click', async () => {
+      statusEl.className = 'status';
+      statusEl.textContent = 'Enviando…';
+      const fd = new FormData();
+      fd.set('mode', modeEl.value);
+      fd.set('prompt', document.getElementById('prompt').value.trim());
+      fd.set('size', sizeEl.value);
+      fd.set('duration', document.getElementById('duration').value);
+      if (document.getElementById('seed').value) fd.set('seed', document.getElementById('seed').value);
+      if (MODES[modeEl.value].needs_image && imageInput.files[0]) fd.set('image', imageInput.files[0]);
+      const r = await fetch('/api/generate', { method: 'POST', body: fd });
+      const data = await r.json();
+      if (!r.ok) {
+        statusEl.className = 'status err';
+        statusEl.textContent = data.error || 'Falha';
+        return;
+      }
+      statusEl.textContent = 'Na fila (frames: ' + data.length + ')…';
+      await poll(data.job_id);
+    });
+
+    loadGallery();
+  </script>
+</body>
+</html>

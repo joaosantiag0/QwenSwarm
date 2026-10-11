@@ -1,0 +1,5 @@
+{
+  "enabled": true,
+  "lora": "p_qwen_image_2.1_8step_v0.1.safetensors",
+  "_comment": "Para desativar o modo Pruna na UI: \"enabled\": false e reinicie qwen-editor (systemctl --user restart qwen-editor)"
+}
