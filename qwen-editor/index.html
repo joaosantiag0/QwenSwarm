@@ -145,6 +145,112 @@
     .queue-row { margin-top: 0.75rem; align-items: center; }
     .queue-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
     .queue-info { font-size: 0.85rem; color: var(--muted); flex: 1; min-width: 200px; }
+    .pool-hint { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.5rem; }
+    .pool-controls { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0; align-items: center; }
+    .pool-controls button { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
+    .pool-count { font-size: 0.78rem; color: var(--muted); }
+    .pool-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+      gap: 0.5rem;
+      max-height: 360px;
+      overflow-y: auto;
+      padding: 2px;
+    }
+    .pool-item {
+      position: relative;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      cursor: pointer;
+      background: var(--bg);
+      user-select: none;
+    }
+    .pool-item.selected { border-color: var(--accent); }
+    .pool-item img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+    .pool-badge {
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.68rem;
+      font-weight: 700;
+      border-radius: 5px;
+      padding: 0.05rem 0.35rem;
+      min-width: 1.15rem;
+      text-align: center;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+    }
+    .pool-item-actions { position: absolute; top: 4px; right: 4px; display: flex; gap: 2px; }
+    .pool-item-actions button {
+      padding: 0.15rem 0.35rem;
+      font-size: 0.65rem;
+      border-radius: 4px;
+      background: rgba(20, 22, 30, 0.88);
+      color: #fff;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      line-height: 1.2;
+    }
+    .pool-item-actions button:hover { border-color: var(--accent); color: var(--accent); }
+    .pool-item-name {
+      font-size: 0.6rem;
+      color: var(--muted);
+      padding: 0.15rem 0.3rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .queue-panel { margin-top: 1.5rem; }
+    .queue-panel[hidden] { display: none !important; }
+    .queue-summary { font-size: 0.85rem; color: var(--muted); margin: 0.25rem 0 0.75rem; }
+    .queue-summary .paused-tag { color: #e6a23c; font-weight: 700; }
+    .queue-list { display: flex; flex-direction: column; gap: 0.35rem; max-height: 420px; overflow-y: auto; }
+    .queue-item {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.35rem 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.8rem;
+      background: var(--bg);
+    }
+    .queue-item img { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; flex: none; }
+    .queue-item .q-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .queue-item .q-sub { font-size: 0.68rem; color: var(--muted); display: block; }
+    .queue-item .q-error { color: var(--error); font-size: 0.7rem; display: block; white-space: normal; }
+    .q-pos { font-size: 0.7rem; color: var(--muted); width: 2.6rem; text-align: right; flex: none; }
+    .q-status { font-size: 0.68rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 4px; flex: none; }
+    .q-status.pending { background: #2a2f3d; color: var(--muted); }
+    .q-status.running { background: rgba(108, 140, 255, 0.2); color: var(--accent); }
+    .q-status.done { background: rgba(62, 207, 142, 0.2); color: var(--success); }
+    .q-status.error { background: rgba(255, 107, 107, 0.2); color: var(--error); }
+    .q-status.cancelled { background: #3a3f50; color: #aab; }
+    .q-prio {
+      display: inline-block;
+      background: #e6a23c;
+      color: #1a1200;
+      font-size: 0.62rem;
+      font-weight: 700;
+      border-radius: 4px;
+      padding: 0 0.3rem;
+      margin-left: 0.25rem;
+      vertical-align: middle;
+    }
+    .q-time { font-size: 0.7rem; color: var(--muted); width: 3.2rem; text-align: right; flex: none; }
+    .queue-item .q-open {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 0.2rem 0.5rem;
+      font-size: 0.7rem;
+      cursor: pointer;
+      flex: none;
+    }
+    .queue-item .q-open:hover { border-color: var(--accent); color: var(--accent); }
     .prompt-admin-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
     .prompt-admin-row button { padding: 0.45rem 0.85rem; font-size: 0.85rem; }
     .prompt-editor {
@@ -400,11 +506,18 @@
       </div>
       <div class="grid">
         <div class="card">
-          <label>Imagem para editar *</label>
+          <label>Imagens (pool)</label>
+          <p class="pool-hint">O nº na miniatura é a prioridade da fila. Clique para marcar/desmarcar; use ↑ para dar prioridade. Fotos novas entram no topo já marcadas.</p>
           <div class="drop" id="drop1">
-            <input type="file" id="image1" name="image1" accept="image/*" required>
-            <span class="hint">Clique ou arraste a foto principal</span>
+            <input type="file" id="image-input" accept="image/*" multiple>
+            <span class="hint">Clique ou arraste as fotos</span>
           </div>
+          <div class="pool-controls">
+            <button type="button" id="pool-select-all" class="btn-secondary">Marcar todas</button>
+            <button type="button" id="pool-clear" class="btn-secondary">Limpar seleção</button>
+            <span class="pool-count" id="pool-count"></span>
+          </div>
+          <div class="pool-grid" id="pool-grid"></div>
         </div>
         <div class="card refs-block">
           <label>Imagens de referência (opcional)</label>
@@ -463,9 +576,19 @@
         <div class="row queue-row">
           <div class="queue-actions">
             <button type="button" id="queue-btn" class="btn-queue">Iniciar fila</button>
-            <button type="button" id="queue-cancel-btn" class="btn-danger" hidden>Cancelar fila</button>
           </div>
-          <span class="queue-info" id="queue-info">Selecione um prompt — a fila processa ele e todos os seguintes na ordem do dropdown (188 prompts).</span>
+          <span class="queue-info" id="queue-info">Selecione as imagens e o prompt inicial — a fila processa ele e todos os seguintes, e continua mesmo se o servidor reiniciar.</span>
+        </div>
+
+        <div class="card queue-panel" id="queue-panel" hidden>
+          <label>Fila (lote atual)</label>
+          <div class="queue-summary" id="queue-summary"></div>
+          <div class="queue-list" id="queue-list"></div>
+          <div class="queue-actions" style="margin-top: 0.75rem">
+            <button type="button" id="queue-pause-btn" class="btn-secondary">Pausar</button>
+            <button type="button" id="queue-cancel-btn" class="btn-danger">Cancelar pendentes</button>
+            <button type="button" id="queue-clear-btn" class="btn-secondary">Limpar concluídos</button>
+          </div>
         </div>
 
         <label for="prompt" style="margin-top:1rem">O que você quer mudar?</label>
@@ -534,36 +657,155 @@
   <script id="prompt-data" type="application/json"><!--PROMPT_DATA--></script>
   <script id="model-data" type="application/json"><!--MODEL_DATA--></script>
   <script>
-    function setupDrop(dropEl, inputEl) {
+    function setupPoolDrop(dropEl, inputEl) {
       dropEl.addEventListener('click', () => inputEl.click());
       dropEl.addEventListener('dragover', e => { e.preventDefault(); dropEl.classList.add('dragover'); });
       dropEl.addEventListener('dragleave', () => dropEl.classList.remove('dragover'));
       dropEl.addEventListener('drop', e => {
         e.preventDefault();
         dropEl.classList.remove('dragover');
-        if (e.dataTransfer.files.length) {
-          inputEl.files = e.dataTransfer.files;
-          preview(inputEl, dropEl);
-        }
+        if (e.dataTransfer.files.length) addLocalFiles(e.dataTransfer.files);
       });
-      inputEl.addEventListener('change', () => preview(inputEl, dropEl));
+      inputEl.addEventListener('change', () => {
+        if (inputEl.files.length) addLocalFiles(inputEl.files);
+        inputEl.value = '';
+      });
     }
 
-    function preview(input, drop) {
-      const file = input.files[0];
-      if (!file) return;
-      drop.querySelectorAll('img.preview-thumb').forEach(el => el.remove());
-      const img = document.createElement('img');
-      img.className = 'preview-thumb';
-      img.src = URL.createObjectURL(file);
-      const hint = drop.querySelector('.hint');
-      if (hint) hint.textContent = file.name;
-      const fileInput = drop.querySelector('input[type=file]');
-      if (fileInput) drop.insertBefore(img, fileInput.nextSibling);
-      else drop.appendChild(img);
+    const poolGridEl = document.getElementById('pool-grid');
+    const poolCountEl = document.getElementById('pool-count');
+    let poolImages = [];
+    let poolSelection = [];
+
+    function poolEntry(id) {
+      return poolImages.find(p => p.id === id);
     }
 
-    setupDrop(document.getElementById('drop1'), document.getElementById('image1'));
+    async function addLocalFiles(files) {
+      const locals = [...files].map(f => {
+        const id = 'local_' + Math.random().toString(36).slice(2, 10);
+        const entry = { id, name: f.name, file: f, thumb_url: URL.createObjectURL(f), file_url: null };
+        poolImages.unshift(entry);
+        return entry;
+      });
+      poolSelection = [...locals.map(e => e.id), ...poolSelection];
+      renderPool();
+      const oldIds = locals.map(e => e.id);
+      poolCountEl.textContent = `Salvando ${locals.length} foto(s) no pool...`;
+      try {
+        const fd = new FormData();
+        locals.forEach(e => fd.append('images', e.file, e.name || 'image.png'));
+        const res = await fetch('/api/pool', { method: 'POST', body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || res.statusText);
+        const newIds = (data.items || []).map(i => i.id);
+        const map = new Map(oldIds.map((oid, i) => [oid, newIds[i]]));
+        poolImages = poolImages.filter(p => !oldIds.includes(p.id));
+        poolSelection = poolSelection
+          .map(x => (map.has(x) ? map.get(x) : x))
+          .filter(Boolean);
+        await loadPool();
+        setStatus(`${newIds.length} foto(s) salvas no pool.`, 'done');
+      } catch (err) {
+        poolImages = poolImages.filter(p => !oldIds.includes(p.id));
+        poolSelection = poolSelection.filter(x => !oldIds.includes(x));
+        renderPool();
+        setStatus('Erro ao salvar fotos no pool: ' + err.message, 'error');
+      }
+    }
+
+    async function loadPool() {
+      try {
+        const res = await fetch('/api/pool');
+        const data = await res.json();
+        const saved = data.images || [];
+        const locals = poolImages.filter(p => p.file);
+        poolImages = [...locals, ...saved];
+        poolSelection = poolSelection.filter(id => poolEntry(id));
+        locals.forEach(p => {
+          if (!poolSelection.includes(p.id)) poolSelection.unshift(p.id);
+        });
+      } catch { /* servidor reiniciando — tenta de novo no próximo poll */ }
+      renderPool();
+    }
+
+    function togglePoolItem(id) {
+      const idx = poolSelection.indexOf(id);
+      if (idx >= 0) poolSelection.splice(idx, 1);
+      else poolSelection.push(id);
+      renderPool();
+    }
+
+    function movePoolItemUp(id) {
+      const idx = poolSelection.indexOf(id);
+      if (idx <= 0) return;
+      [poolSelection[idx - 1], poolSelection[idx]] = [poolSelection[idx], poolSelection[idx - 1]];
+      renderPool();
+    }
+
+    async function removePoolItem(id) {
+      const entry = poolEntry(id);
+      if (!entry) return;
+      if (entry.file) {
+        poolImages = poolImages.filter(p => p.id !== id);
+        poolSelection = poolSelection.filter(x => x !== id);
+        renderPool();
+        return;
+      }
+      if (!confirm('Remover esta imagem do pool?')) return;
+      const res = await fetch('/api/pool/' + encodeURIComponent(id), { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error || res.statusText);
+        return;
+      }
+      poolImages = poolImages.filter(p => p.id !== id);
+      poolSelection = poolSelection.filter(x => x !== id);
+      renderPool();
+    }
+
+    function renderPool() {
+      const rank = new Map(poolSelection.map((id, i) => [id, i + 1]));
+      poolGridEl.innerHTML = poolImages.map(p => {
+        const n = rank.get(p.id);
+        const src = p.thumb_url || p.file_url || '';
+        const actions = p.file
+          ? `<button type="button" data-act="up" title="Subir prioridade">↑</button>`
+          : `<button type="button" data-act="up" title="Subir prioridade">↑</button>
+             <button type="button" data-act="rm" title="Remover do pool">×</button>`;
+        return `<div class="pool-item${n ? ' selected' : ''}" data-id="${escHtml(p.id)}" title="${escHtml(p.name || '')}">
+          ${n ? `<span class="pool-badge">${n}</span>` : ''}
+          <div class="pool-item-actions">${actions}</div>
+          <img src="${escHtml(src)}" alt="">
+          <div class="pool-item-name">${escHtml(p.name || p.id)}</div>
+        </div>`;
+      }).join('');
+      poolCountEl.textContent = `${poolSelection.length} de ${poolImages.length} selecionada(s)`;
+      poolGridEl.querySelectorAll('.pool-item').forEach(el => {
+        const id = el.dataset.id;
+        el.addEventListener('click', e => {
+          const actBtn = e.target.closest('button');
+          if (actBtn) {
+            e.stopPropagation();
+            if (actBtn.dataset.act === 'up') movePoolItemUp(id);
+            else if (actBtn.dataset.act === 'rm') removePoolItem(id);
+            return;
+          }
+          togglePoolItem(id);
+        });
+      });
+    }
+
+    document.getElementById('pool-select-all').addEventListener('click', () => {
+      poolSelection = poolImages.map(p => p.id);
+      renderPool();
+    });
+    document.getElementById('pool-clear').addEventListener('click', () => {
+      poolSelection = [];
+      renderPool();
+    });
+
+    setupPoolDrop(document.getElementById('drop1'), document.getElementById('image-input'));
     const presetRefsPreview = document.getElementById('preset-refs-preview');
     const sessionRefsList = document.getElementById('session-refs-list');
     const peRefsEl = document.getElementById('pe-refs');
@@ -868,7 +1110,7 @@
       renderPresetOptions(selectId);
       const countEl = document.getElementById('queue-info');
       if (countEl) {
-        countEl.textContent = `Selecione um prompt — a fila processa ele e todos os seguintes na ordem do dropdown (${promptPresets.length} prompts).`;
+        countEl.textContent = `Selecione as imagens e o prompt inicial — a fila processa ele e mais ${Math.max(0, promptPresets.length - 1)} prompt(s) seguintes e sobrevive a reinício do servidor.`;
       }
     }
 
@@ -912,6 +1154,10 @@
         category: peCategory.value.trim(),
         label: peLabel.value.trim(),
         text: peText.value.trim(),
+        model: modelSelect.value,
+        quality: qualitySelect.value,
+        resolution: resolutionInput.value,
+        steps: stepsInput.value,
       };
       if (!payload.text) {
         alert('Texto do prompt é obrigatório.');
@@ -953,6 +1199,11 @@
         }
       }
       closePromptEditor();
+      const gen = data.generated || {};
+      if (gen.message) {
+        setStatus(gen.message, gen.queued ? 'running' : 'done');
+        if (gen.queued) startQueuePolling();
+      }
     }
 
     async function deleteSelectedPrompt() {
@@ -1270,57 +1521,20 @@
     const queueBtn = document.getElementById('queue-btn');
     const queueCancelBtn = document.getElementById('queue-cancel-btn');
     const queueInfo = document.getElementById('queue-info');
-    const queueState = { active: false, paused: false, cancelled: false, items: [], index: 0 };
-
-    function updateQueueUi() {
-      queueCancelBtn.hidden = !queueState.active;
-      if (!queueState.active) {
-        queueBtn.textContent = 'Iniciar fila';
-        queueBtn.classList.remove('paused');
-        return;
-      }
-      if (queueState.paused) {
-        queueBtn.textContent = 'Continuar fila';
-        queueBtn.classList.add('paused');
-      } else {
-        queueBtn.textContent = 'Pausar fila';
-        queueBtn.classList.remove('paused');
-      }
-    }
-
-    function cancelQueue() {
-      if (!queueState.active) return;
-      queueState.cancelled = true;
-      queueState.active = false;
-      queueState.paused = false;
-      btn.disabled = false;
-      updateQueueUi();
-    }
-
-    function getQueueItems() {
-      const startId = document.getElementById('preset').value;
-      if (!startId) return [];
-      const idx = promptPresets.findIndex(p => p.id === startId);
-      if (idx < 0) return [];
-      return promptPresets.slice(idx);
-    }
-
-    function waitWhilePaused() {
-      return new Promise(resolve => {
-        const tick = () => {
-          if (!queueState.active || !queueState.paused) resolve();
-          else setTimeout(tick, 400);
-        };
-        tick();
-      });
-    }
+    const queuePanel = document.getElementById('queue-panel');
+    const queueSummaryEl = document.getElementById('queue-summary');
+    const queueListEl = document.getElementById('queue-list');
+    const queuePauseBtn = document.getElementById('queue-pause-btn');
+    const queueClearBtn = document.getElementById('queue-clear-btn');
+    let queueTimer = null;
+    let queueBusy = false;
+    let queuePausedState = false;
+    const quickShown = new Set();
+    const quickErrored = new Set();
 
     async function pollJob(jobId, statusPrefix = '') {
       let elapsed = 0;
       while (true) {
-        if (statusPrefix && !queueState.active) {
-          throw new Error('Fila cancelada');
-        }
         const res = await fetch('/api/status/' + jobId);
         const job = await res.json();
         if (job.status === 'queued' || job.status === 'running') {
@@ -1350,11 +1564,32 @@
       }
     }
 
+    async function ensurePoolIdForFirstSelected() {
+      const id = poolSelection[0];
+      const entry = id ? poolEntry(id) : null;
+      if (!entry) return null;
+      if (!entry.file) return entry.id;
+      const fd = new FormData();
+      fd.append('images', entry.file, entry.name || 'image.png');
+      const res = await fetch('/api/pool', { method: 'POST', body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      const newId = (data.items || [])[0]?.id;
+      if (!newId) throw new Error('Falha ao subir a imagem para o pool');
+      poolImages = poolImages.filter(p => p.id !== entry.id);
+      poolSelection = poolSelection.map(x => (x === entry.id ? newId : x));
+      await loadPool();
+      return newId;
+    }
+
     async function submitGeneration(statusPrefix = '') {
       const prompt = getActivePrompt();
       if (!prompt) throw new Error('Prompt obrigatório');
+      const poolId = await ensurePoolIdForFirstSelected();
+      if (!poolId) throw new Error('Selecione ao menos uma imagem no pool');
       const fd = new FormData(document.getElementById('form'));
       fd.set('prompt', prompt);
+      fd.set('image_pool_id', poolId);
       const presetId = presetEl.value || '';
       const preset = promptPresets.find(p => p.id === presetId);
       fd.set('prompt_preset_id', presetId || 'custom');
@@ -1364,87 +1599,203 @@
         const refIds = [...refBoxes].filter(el => el.checked).map(el => el.dataset.refId).filter(Boolean);
         fd.set('preset_ref_ids', refIds.join(','));
       }
-      const res = await fetch('/api/generate', { method: 'POST', body: fd });
-      const data = await res.json();
+      const res = await fetch('/api/quick', { method: 'POST', body: fd });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || res.statusText);
-      if (data.resize?.image1 && !statusPrefix) {
-        const r = data.resize.image1;
-        setStatus(`Redimensionado: ${r.from[0]}×${r.from[1]} → ${r.to[0]}×${r.to[1]}. Gerando...`, 'running');
-      }
-      return pollJob(data.job_id, statusPrefix);
+      setStatus('Na fila prioritária — roda depois do item em curso. Acompanhe no painel da fila.', 'running');
+      startQueuePolling();
+      return data;
     }
 
-    async function runQueue() {
-      if (queueState.active) {
-        queueState.paused = !queueState.paused;
-        updateQueueUi();
-        queueInfo.textContent = queueState.paused
-          ? `Fila pausada em ${queueState.index + 1}/${queueState.items.length}`
-          : `Fila em andamento: ${queueState.index + 1}/${queueState.items.length}`;
-        return;
-      }
+    function fmtElapsed(s) {
+      s = Math.max(0, parseInt(s, 10) || 0);
+      return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}s`;
+    }
 
-      const items = getQueueItems();
+    function renderQueuePanel(data) {
+      const summary = data.summary || {};
+      const items = data.items || [];
+      const total = summary.items_total ?? summary.total ?? items.length;
+      const finished = (summary.done ?? 0) + (summary.error ?? 0) + (summary.cancelled ?? 0);
+      queuePanel.hidden = false;
+      if (queueInfo) {
+        queueInfo.textContent = summary.active
+          ? `Fila do servidor: ${finished}/${total}${summary.paused ? ' (pausada)' : ''}`
+          : (total ? `Fila do servidor concluída: ${total} item(ns).` : 'Fila do servidor vazia.');
+      }
+      const pausedTag = summary.paused ? ' · <span class="paused-tag">pausada</span>' : '';
+      const windowTag = summary.truncated
+        ? ` · mostrando ${items.length} de ${total}`
+        : '';
+      queueSummaryEl.innerHTML =
+        `Total ${total} · Concluídos ${summary.done ?? 0} · Rodando ${summary.running ?? 0} · Pendentes ${summary.pending ?? 0} · Erros ${summary.error ?? 0}` +
+        ((summary.cancelled || 0) ? ` · Cancelados ${summary.cancelled}` : '') + pausedTag + windowTag;
+      queuePauseBtn.textContent = summary.paused ? 'Retomar' : 'Pausar';
       if (!items.length) {
-        alert('Selecione um prompt no dropdown para iniciar a fila.');
+        queueListEl.innerHTML = '<div class="queue-item" style="color:var(--muted)">Nenhum item na fila.</div>';
         return;
       }
-      if (!document.getElementById('image1').files[0]) {
-        alert('Envie a imagem principal antes de iniciar a fila.');
-        return;
-      }
-
-      queueState.active = true;
-      queueState.paused = false;
-      queueState.items = items;
-      queueState.index = 0;
-      btn.disabled = true;
-      updateQueueUi();
-
-      while (queueState.index < queueState.items.length && queueState.active) {
-        await waitWhilePaused();
-        if (!queueState.active) break;
-
-        const item = queueState.items[queueState.index];
-        const pos = `${queueState.index + 1}/${queueState.items.length}`;
-        const useCustom = queueState.index === 0 && promptEdited && getActivePrompt();
-        promptEl.value = useCustom ? getActivePrompt() : item.text;
-        presetEl.value = item.id;
-        queueInfo.textContent = `Fila: ${pos} — ${useCustom ? 'prompt customizado' : item.label}`;
-
-        try {
-          await submitGeneration(`Fila ${pos}`);
-        } catch (err) {
-          if (queueState.cancelled) break;
-          setStatus('Erro na fila: ' + err.message, 'error');
-          queueState.active = false;
-          break;
-        }
-        if (queueState.cancelled) break;
-        queueState.index++;
-      }
-
-      if (queueState.cancelled) {
-        const done = queueState.index;
-        const total = queueState.items.length;
-        setStatus(`Fila cancelada — ${done} de ${total} concluído(s).`, 'error');
-        queueInfo.textContent = 'Fila cancelada. A geração em andamento pode ainda terminar no servidor.';
-      } else if (queueState.index >= queueState.items.length) {
-        setStatus(`Fila concluída — ${queueState.items.length} prompt(s).`, 'done');
-        queueInfo.textContent = 'Fila concluída.';
-      } else if (!queueState.active) {
-        queueInfo.textContent = 'Fila interrompida.';
-      }
-
-      queueState.active = false;
-      queueState.paused = false;
-      queueState.cancelled = false;
-      btn.disabled = false;
-      updateQueueUi();
+      queueListEl.innerHTML = items.map((it, idx) => {
+        const prio = it.lane === 'quick' ? ' <span class="q-prio">prio</span>' : '';
+        const label = escHtml(it.prompt_preset_label || it.prompt_preset_id || '');
+        const sub = escHtml(it.image_name || '');
+        const thumb = it.thumb_url
+          ? `<img src="${escHtml(it.thumb_url)}" alt="">`
+          : '<span style="width:40px;flex:none"></span>';
+        const errLine = it.status === 'error' && it.error
+          ? `<span class="q-error">${escHtml(it.error)}</span>`
+          : '';
+        const retries = it.retries ? ` · retry ${it.retries}` : '';
+        const openBtn = (it.status === 'done' && it.images && it.images.length)
+          ? `<button type="button" class="q-open" data-file="${escHtml(it.images[0])}">ver</button>`
+          : '';
+        return `<div class="queue-item">
+          <span class="q-pos">${it.order != null ? it.order : idx + 1}/${total}</span>
+          ${thumb}
+          <span class="q-label">${label}${prio}<span class="q-sub">${sub}</span>${errLine}</span>
+          <span class="q-status ${escHtml(it.status)}">${escHtml(it.status)}</span>
+          <span class="q-time">${fmtElapsed(it.elapsed_s)}${retries}</span>
+          ${openBtn}
+        </div>`;
+      }).join('');
+      queueListEl.querySelectorAll('.q-open').forEach(b => {
+        b.addEventListener('click', () => openLightbox(b.dataset.file));
+      });
     }
 
-    queueBtn.addEventListener('click', runQueue);
-    queueCancelBtn.addEventListener('click', cancelQueue);
+    async function pollQueue() {
+      if (queueBusy) return;
+      queueBusy = true;
+      try {
+        const res = await fetch('/api/queue');
+        const data = await res.json();
+        renderQueuePanel(data);
+        const summary = data.summary || {};
+        queuePausedState = !!summary.paused;
+        (data.items || []).forEach(it => {
+          if (it.lane !== 'quick') return;
+          if (it.status === 'running') {
+            setStatus('Gerando item prioritário...', 'running');
+          } else if (it.status === 'done' && (it.images || []).length && !quickShown.has(it.id)) {
+            quickShown.add(it.id);
+            resultEl.innerHTML = it.images.map(f => resultHtml(f)).join('');
+            setStatus(`Pronto em ${fmtElapsed(it.elapsed_s)}!`, 'done');
+            loadGallery();
+          } else if (it.status === 'error' && !quickErrored.has(it.id)) {
+            quickErrored.add(it.id);
+            setStatus('Erro no item prioritário: ' + (it.error || ''), 'error');
+          }
+        });
+        if (!summary.active) {
+          stopQueuePolling();
+          loadGallery();
+        }
+      } catch { /* servidor reiniciando — próxima tentativa em 2s */ }
+      finally { queueBusy = false; }
+    }
+
+    function startQueuePolling() {
+      if (queueTimer) return;
+      pollQueue();
+      queueTimer = setInterval(pollQueue, 2000);
+    }
+
+    function stopQueuePolling() {
+      if (queueTimer) {
+        clearInterval(queueTimer);
+        queueTimer = null;
+      }
+    }
+
+    async function startBatch() {
+      const startId = presetEl.value;
+      if (!startId) {
+        alert('Escolha o prompt inicial no dropdown — a fila vai dele até o fim da lista.');
+        return;
+      }
+      if (!poolSelection.length) {
+        alert('Selecione ao menos uma imagem no pool.');
+        return;
+      }
+      const startIdx = promptPresets.findIndex(p => p.id === startId);
+      const presetCount = startIdx >= 0 ? (promptPresets.length - startIdx) : 1;
+      const totalGen = poolSelection.length * presetCount;
+      const fmtNum = n => n.toLocaleString('pt-BR');
+      const fmtDur = mins => {
+        if (mins < 60) return `~${mins} min`;
+        const h = mins / 60;
+        if (h < 48) return `~${h.toFixed(1)} h`;
+        return `~${(h / 24).toFixed(1)} dias`;
+      };
+      let msg = `${poolSelection.length} imagem(ns) × ${presetCount} prompt(s) = ${fmtNum(totalGen)} gerações.\n` +
+        `Tempo estimado: ${fmtDur(totalGen * 2)} (a ~2 min por imagem).`;
+      if (totalGen > 500) {
+        msg = `ATENÇÃO — lote muito grande!\n\n${msg}\n\nContinuar mesmo assim?`;
+      } else if (totalGen > 50) {
+        msg += `\n\nContinuar?`;
+      }
+      if (totalGen > 50 && !confirm(msg)) return;
+      queueBtn.disabled = true;
+      setStatus('Enviando lote...', 'running');
+      try {
+        const locals = poolSelection.map(poolEntry).filter(p => p && p.file);
+        let newIds = [];
+        if (locals.length) {
+          const fd = new FormData();
+          locals.forEach(p => fd.append('images', p.file, p.name || 'image.png'));
+          const res = await fetch('/api/pool', { method: 'POST', body: fd });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || res.statusText);
+          newIds = (data.items || []).map(i => i.id);
+        }
+        const savedIds = poolSelection.filter(id => {
+          const p = poolEntry(id);
+          return p && !p.file;
+        });
+        const ordered = [...newIds, ...savedIds];
+        poolImages = poolImages.filter(p => !p.file);
+        poolSelection = savedIds.slice();
+        const fd2 = new FormData();
+        fd2.set('pool_ids', ordered.join(','));
+        fd2.set('preset_start_id', startId);
+        fd2.set('model', modelSelect.value);
+        fd2.set('quality', qualitySelect.value);
+        fd2.set('resolution', resolutionInput.value);
+        fd2.set('steps', stepsInput.value);
+        if (totalGen > 500) fd2.set('force', '1');
+        const refBoxes = document.querySelectorAll('.preset-ref-use');
+        if (refBoxes.length) {
+          const refIds = [...refBoxes].filter(el => el.checked).map(el => el.dataset.refId).filter(Boolean);
+          fd2.set('preset_ref_ids', refIds.join(','));
+        }
+        const res2 = await fetch('/api/batch', { method: 'POST', body: fd2 });
+        const data2 = await res2.json().catch(() => ({}));
+        if (!res2.ok) throw new Error(data2.error || res2.statusText);
+        setStatus(`Lote enfileirado: ${fmtNum(data2.total)} itens (${data2.images} imagem(ns) × ${data2.presets} prompts).`, 'done');
+        await loadPool();
+        startQueuePolling();
+      } catch (err) {
+        setStatus('Erro: ' + err.message, 'error');
+      } finally {
+        queueBtn.disabled = false;
+      }
+    }
+
+    queueBtn.addEventListener('click', startBatch);
+    queuePauseBtn.addEventListener('click', async () => {
+      await fetch(queuePausedState ? '/api/queue/resume' : '/api/queue/pause', { method: 'POST' });
+      await pollQueue();
+    });
+    queueCancelBtn.addEventListener('click', async () => {
+      if (!confirm('Cancelar todos os itens pendentes da fila? O que já está rodando termina.')) return;
+      await fetch('/api/queue/cancel', { method: 'POST' });
+      await pollQueue();
+    });
+    queueClearBtn.addEventListener('click', async () => {
+      const res = await fetch('/api/queue', { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      renderQueuePanel(data.queue || { summary: {}, items: [] });
+    });
 
     async function downloadAllImages() {
       const res = await fetch('/api/gallery?all=1');
@@ -1595,7 +1946,6 @@
 
     document.getElementById('form').addEventListener('submit', async e => {
       e.preventDefault();
-      if (queueState.active) return;
       btn.disabled = true;
       resultEl.innerHTML = '';
       setStatus('Enviando...', 'running');
@@ -1608,6 +1958,8 @@
     });
 
     loadGallery();
+    loadPool();
+    startQueuePolling();
   </script>
 </body>
 </html>
