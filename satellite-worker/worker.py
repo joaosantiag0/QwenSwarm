@@ -16,19 +16,50 @@ import urllib.error
 from pathlib import Path
 from PIL import Image
 
-MASTER_URL = os.environ.get("MASTER_URL", "http://192.168.2.183:3000").rstrip("/")
+def _load_env_file():
+    """Carrega variáveis do arquivo .env local caso exista."""
+    env_paths = [
+        Path(__file__).resolve().parent / ".env",
+        Path.cwd() / ".env",
+    ]
+    for p in env_paths:
+        if p.is_file():
+            try:
+                with p.open("r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith("#") or "=" not in line:
+                            continue
+                        k, v = line.split("=", 1)
+                        k, v = k.strip(), v.strip()
+                        if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+                            v = v[1:-1]
+                        if k and k not in os.environ:
+                            os.environ[k] = v
+                break
+            except Exception:
+                pass
+
+_load_env_file()
+
+MASTER_HOST = os.environ.get("MASTER_HOST", "192.168.2.183")
+MASTER_PORT = os.environ.get("MASTER_PORT", "3000")
+MASTER_URL = os.environ.get("MASTER_URL", f"http://{MASTER_HOST}:{MASTER_PORT}").rstrip("/")
 COMFY_URL = os.environ.get("COMFY_URL", "http://127.0.0.1:8188").rstrip("/")
 WORKER_ID = os.environ.get("WORKER_ID", "predator-3060")
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "15"))
 
-BASE_DIR = Path("/home/joao/satellite_worker")
+MASTER_SSH_USER = os.environ.get("MASTER_SSH_USER", "user")
+MASTER_SSH_PASS = os.environ.get("MASTER_SSH_PASS", "password")
+
+BASE_DIR = Path(os.environ.get("BASE_DIR", Path.home() / "satellite_worker"))
 OUTBOX_DIR = BASE_DIR / "outbox"
 POOL_CACHE_DIR = BASE_DIR / "pool"
 RESIZED_DIR = BASE_DIR / "resized"
 REFS_CACHE_DIR = BASE_DIR / "preset_refs"
 LOCAL_QUEUE_FILE = BASE_DIR / "local_queue.json"
 
-COMFY_DIR = Path("/home/joao/ComfyUI")
+COMFY_DIR = Path(os.environ.get("COMFY_DIR", Path.home() / "ComfyUI"))
 COMFY_INPUT = COMFY_DIR / "input"
 COMFY_OUTPUT = COMFY_DIR / "output"
 WORKFLOW_FILE = COMFY_DIR / "user/default/workflows/image_qwen_image_2_1_image_edit.json"
@@ -428,7 +459,7 @@ def deliver_or_outbox(item_id: str, filename: str, finished_at: float):
                 res = json.loads(resp.read().decode("utf-8"))
                 if res.get("ok"):
                     delivered = True
-                    print(f"[✓] Entregue com sucesso ao Master 183: {item_id} -> {filename}")
+                    print(f"[✓] Entregue com sucesso ao Master ({MASTER_HOST}): {item_id} -> {filename}")
         except Exception as e:
             print(f"[!] Falha ao entregar direto ao Master (guardando no outbox): {e}")
 
@@ -449,9 +480,9 @@ def sync_assets_from_master():
         import subprocess
         # Sincroniza preset_refs e prompts.json
         cmd = [
-            "sshpass", "-p", "govegogo00",
+            "sshpass", "-p", MASTER_SSH_PASS,
             "rsync", "-az", "--update",
-            "user@192.168.2.183:/home/user/qwen-editor/preset_refs/",
+            f"{MASTER_SSH_USER}@{MASTER_HOST}:/home/{MASTER_SSH_USER}/qwen-editor/preset_refs/",
             str(REFS_CACHE_DIR) + "/"
         ]
         subprocess.run(cmd, capture_output=True, timeout=15)

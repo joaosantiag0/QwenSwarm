@@ -107,43 +107,43 @@ RAPID_CLIP = "Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf"
 RAPID_VAE_CANDIDATES = ("qwen_image_vae.safetensors", "qwen_image_2.1_vae_bf16.safetensors")
 
 QUALITY_PRESETS_QWEN21 = {
-    "ultra": {"resolution": 512, "steps": 15, "label": "Ultra rápido (~1-2 min)"},
-    "fast": {"resolution": 768, "steps": 20, "label": "Rápido (~3-4 min)"},
+    "ultra": {"resolution": 512, "steps": 15, "label": "Ultra fast (~1-2 min)"},
+    "fast": {"resolution": 768, "steps": 20, "label": "Fast (~3-4 min)"},
     "normal": {"resolution": 1024, "steps": 25, "label": "Normal (~5 min)"},
-    "high": {"resolution": 1024, "steps": 35, "label": "Alta qualidade (~7 min)"},
+    "high": {"resolution": 1024, "steps": 35, "label": "High quality (~7 min)"},
 }
 
 QUALITY_PRESETS_RAPID = {
-    "ultra": {"resolution": 512, "steps": 4, "label": "Ultra — 512px, 4 passos (~30s)"},
-    "fast": {"resolution": 768, "steps": 4, "label": "Rápido — 768px, 4 passos (~1 min)"},
-    "normal": {"resolution": 1024, "steps": 4, "label": "Normal — 1024px, 4 passos (~1-2 min)"},
-    "high": {"resolution": 1024, "steps": 4, "label": "Alta — 1024px, 4 passos (~1-2 min)"},
+    "ultra": {"resolution": 512, "steps": 4, "label": "Ultra — 512px, 4 steps (~30s)"},
+    "fast": {"resolution": 768, "steps": 4, "label": "Fast — 768px, 4 steps (~1 min)"},
+    "normal": {"resolution": 1024, "steps": 4, "label": "Normal — 1024px, 4 steps (~1-2 min)"},
+    "high": {"resolution": 1024, "steps": 4, "label": "High — 1024px, 4 steps (~1-2 min)"},
 }
 
 QUALITY_PRESETS_PRUNA = {
-    "ultra": {"resolution": 512, "steps": PRUNA_STEPS, "label": "Ultra — 512px, 8 passos Pruna"},
-    "fast": {"resolution": 768, "steps": PRUNA_STEPS, "label": "Rápido — 768px, 8 passos (~1-2 min)"},
-    "normal": {"resolution": 1024, "steps": PRUNA_STEPS, "label": "Normal — 1024px, 8 passos (~2 min)"},
-    "high": {"resolution": 1024, "steps": PRUNA_STEPS, "label": "1024px, 8 passos (qualidade Pruna v0.1)"},
+    "ultra": {"resolution": 512, "steps": PRUNA_STEPS, "label": "Ultra — 512px, 8 Pruna steps"},
+    "fast": {"resolution": 768, "steps": PRUNA_STEPS, "label": "Fast — 768px, 8 steps (~1-2 min)"},
+    "normal": {"resolution": 1024, "steps": PRUNA_STEPS, "label": "Normal — 1024px, 8 steps (~2 min)"},
+    "high": {"resolution": 1024, "steps": PRUNA_STEPS, "label": "1024px, 8 steps (Pruna v0.1 quality)"},
 }
 
 MODELS = {
     "qwen21": {
-        "label": "Qwen Image 2.1 — melhor qualidade",
+        "label": "Qwen Image 2.1 — highest quality",
         "presets": QUALITY_PRESETS_QWEN21,
-        "hint": "Edição de alta qualidade. Normal ≈ 5 min na RTX 3060.",
+        "hint": "High quality editing. Normal ≈ 5 min on RTX 3060.",
     },
     "rapid": {
-        "label": "Rapid AIO — ultra rápido (4 passos)",
+        "label": "Rapid AIO — ultra fast (4 steps)",
         "presets": QUALITY_PRESETS_RAPID,
-        "hint": "Modelo Rapid AIO com Lightning embutido. ~1 min por imagem.",
+        "hint": "Rapid AIO model with built-in Lightning. ~1 min per image.",
     },
     "qwen21_pruna": {
-        "label": "Qwen 2.1 + Pruna (8 passos, teste)",
+        "label": "Qwen 2.1 + Pruna (8 steps, test)",
         "presets": QUALITY_PRESETS_PRUNA,
         "hint": (
-            "LoRA PrunaAI em cima do mesmo Qwen 2.1 — menos passos, qualidade v0.1 abaixo do normal. "
-            "Para voltar ao modo antigo: escolha «Qwen Image 2.1» ou desative em pruna_config.json."
+            "PrunaAI LoRA over Qwen 2.1 — fewer steps, v0.1 experimental quality. "
+            "To switch back: select «Qwen Image 2.1» or disable in pruna_config.json."
         ),
     },
 }
@@ -1181,7 +1181,7 @@ def render_index_html() -> bytes:
     for preset in presets:
         by_category.setdefault(preset["category"], []).append(preset)
 
-    options = ['<option value="">— Escolha um prompt salvo —</option>']
+    options = ['<option value="">— Choose a saved prompt —</option>']
     for category in sorted(by_category.keys()):
         options.append(f'<optgroup label="{html_module.escape(category)}">')
         for item in by_category[category]:
@@ -1192,7 +1192,7 @@ def render_index_html() -> bytes:
     model_options = []
     for mid, cfg in models_for_ui().items():
         available = model_available(mid)
-        label = cfg["label"] + (" ✓" if available else " (baixando...)")
+        label = cfg["label"] + (" ✓" if available else " (downloading...)")
         disabled = "" if available else " disabled"
         model_options.append(f'<option value="{mid}"{disabled}>{html_module.escape(label)}</option>')
 

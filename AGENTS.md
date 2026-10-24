@@ -57,16 +57,14 @@ How QwenSwarm works and how we operate it (implementation history as of October 
 
 ## Operations / Deployment (Linux Servers)
 
-### Master Server (`192.168.2.183`)
-- User: `user@192.168.2.183` (password used during deploy: `govegogo00` — SSH may occasionally fail 1-2 times consecutively; retrying resolves it).
+### Master Server
 - Directory: `/home/user/qwen-editor/`. ComfyUI at `/home/user/ComfyUI/` (API `127.0.0.1:8188`).
 - Service: `systemctl --user restart qwen-editor` (unit `qwen-editor.service`, `enabled`, `ExecStart=start.sh`). Does **not** have sudo; use `sshpass` + `systemctl --user`.
 - Deploy: Server backup (`cp app.py app.py.bak-<ts>`) → `scp app.py index.html` → restart service → verify `curl /api/queue`.
 - **Python**: ComfyUI virtualenv is **Python 3.12** — `app.py` uses `cgi` (deprecated/removed in 3.13+). Do not upgrade to 3.13 without replacing multipart form parsing.
 - Paths in `app.py` are relative to `WEB_ROOT` (script directory) or `/home/user/ComfyUI` — no hardcoded macOS paths.
 
-### Satellite Worker (`192.168.2.191` - Predator Laptop 3060 6GB)
-- User: `joao@192.168.2.191` (password & sudo: `govegogo00`).
+### Satellite Worker
 - ComfyUI unit: `/etc/systemd/system/comfyui.service` (`--listen 127.0.0.1 --port 8188 --lowvram --vram-headroom 1.2 --reserve-vram 0.8`).
 - Worker unit: `/etc/systemd/system/qwen-satellite.service` (`ExecStart=/home/joao/ComfyUI/venv/bin/python -u /home/joao/satellite_worker/worker.py`).
 - Logs: `journalctl -u qwen-satellite.service -f` and `journalctl -u comfyui.service -f`.

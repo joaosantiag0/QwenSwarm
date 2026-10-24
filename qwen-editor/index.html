@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Editor de Imagens — Qwen</title>
+  <title>Image Editor — Qwen</title>
   <style>
     :root {
       --bg: #0f1117;
@@ -494,106 +494,106 @@
 </head>
 <body>
   <div class="wrap">
-    <h1>Editor de Imagens</h1>
-    <p class="sub" id="model-hint">Fotos grandes são redimensionadas automaticamente.</p>
+    <h1>Image Editor</h1>
+    <p class="sub" id="model-hint">Large images are automatically resized.</p>
 
     <form id="form">
       <div class="card" style="margin-bottom:1.5rem">
-        <label for="model">Modelo</label>
+        <label for="model">Model</label>
         <select id="model" name="model" class="select-input">
           <!--MODEL_OPTIONS-->
         </select>
       </div>
       <div class="grid">
         <div class="card">
-          <label>Imagens (pool)</label>
-          <p class="pool-hint">O nº na miniatura é a prioridade da fila. Clique para marcar/desmarcar; use ↑ para dar prioridade. Fotos novas entram no topo já marcadas.</p>
+          <label>Images (pool)</label>
+          <p class="pool-hint">The number on each thumbnail is queue priority. Click to select/deselect; use ↑ for priority. New photos appear at the top already selected.</p>
           <div class="drop" id="drop1">
             <input type="file" id="image-input" accept="image/*" multiple>
-            <span class="hint">Clique ou arraste as fotos</span>
+            <span class="hint">Click or drag photos here</span>
           </div>
           <div class="pool-controls">
-            <button type="button" id="pool-select-all" class="btn-secondary">Marcar todas</button>
-            <button type="button" id="pool-clear" class="btn-secondary">Limpar seleção</button>
+            <button type="button" id="pool-select-all" class="btn-secondary">Select all</button>
+            <button type="button" id="pool-clear" class="btn-secondary">Clear selection</button>
             <span class="pool-count" id="pool-count"></span>
           </div>
           <div class="pool-grid" id="pool-grid"></div>
         </div>
         <div class="card refs-block">
-          <label>Imagens de referência (opcional)</label>
-          <p class="hint">Salvas no preset e/ou só nesta geração. Use &lt;image2&gt;, &lt;image3&gt;… no texto (até 9 refs).</p>
+          <label>Reference images (optional)</label>
+          <p class="hint">Saved in the preset and/or for this generation only. Use &lt;image2&gt;, &lt;image3&gt;… in prompt text (up to 9 refs).</p>
           <div id="preset-refs-preview" class="ref-grid" hidden></div>
           <div id="session-refs-list"></div>
-          <button type="button" id="add-session-ref" class="btn-secondary">+ Referência nesta geração</button>
+          <button type="button" id="add-session-ref" class="btn-secondary">+ Reference for this generation</button>
         </div>
       </div>
 
       <div class="card" style="margin-top:1.5rem">
-        <label for="preset">Prompt pré-definido</label>
+        <label for="preset">Preset prompt</label>
         <select id="preset" class="select-input">
           <!--PROMPT_OPTIONS-->
         </select>
         <div class="preset-filters">
-          <input type="search" id="preset-search" placeholder="Buscar preset…" autocomplete="off">
-          <select id="preset-category-filter" class="select-input" title="Categoria">
-            <option value="">Todas categorias</option>
+          <input type="search" id="preset-search" placeholder="Search preset…" autocomplete="off">
+          <select id="preset-category-filter" class="select-input" title="Category">
+            <option value="">All categories</option>
           </select>
-          <select id="preset-slot-filter" class="select-input" title="Slot de 5h (última edição do preset)">
-            <option value="">Qualquer slot</option>
+          <select id="preset-slot-filter" class="select-input" title="5h slot (last preset edit)">
+            <option value="">Any slot</option>
           </select>
         </div>
         <div class="prompt-admin-row">
-          <button type="button" id="prompt-new-btn" class="btn-secondary">+ Novo</button>
-          <button type="button" id="prompt-edit-btn" class="btn-secondary" disabled>Editar</button>
-          <button type="button" id="prompt-delete-btn" class="btn-danger" disabled>Remover</button>
-          <button type="button" id="prompt-save-text-btn" class="btn-secondary">Salvar texto atual</button>
+          <button type="button" id="prompt-new-btn" class="btn-secondary">+ New</button>
+          <button type="button" id="prompt-edit-btn" class="btn-secondary" disabled>Edit</button>
+          <button type="button" id="prompt-delete-btn" class="btn-danger" disabled>Delete</button>
+          <button type="button" id="prompt-save-text-btn" class="btn-secondary">Save current text</button>
         </div>
         <div id="prompt-editor" class="prompt-editor" hidden>
           <p class="pe-meta" id="pe-dates"></p>
           <div class="field-row">
-            <label for="pe-category">Categoria</label>
-            <input type="text" id="pe-category" placeholder="Ex: Fav, Custom">
+            <label for="pe-category">Category</label>
+            <input type="text" id="pe-category" placeholder="e.g. Fav, Custom">
           </div>
           <div class="field-row">
-            <label for="pe-label">Nome</label>
-            <input type="text" id="pe-label" placeholder="Nome curto do prompt">
+            <label for="pe-label">Name</label>
+            <input type="text" id="pe-label" placeholder="Short prompt name">
           </div>
           <div class="field-row">
-            <label for="pe-text">Texto do prompt</label>
-            <textarea id="pe-text" placeholder="Texto enviado ao modelo"></textarea>
+            <label for="pe-text">Prompt text</label>
+            <textarea id="pe-text" placeholder="Text sent to the model"></textarea>
           </div>
           <div class="field-row">
-            <label>Imagens de referência do preset</label>
+            <label>Preset reference images</label>
             <div id="pe-refs" class="pe-refs"></div>
-            <button type="button" id="pe-ref-add" class="btn-secondary">+ Adicionar referência</button>
+            <button type="button" id="pe-ref-add" class="btn-secondary">+ Add reference</button>
             <input type="file" id="pe-ref-file" accept="image/*" hidden>
           </div>
           <div class="prompt-editor-actions">
-            <button type="button" id="pe-save-btn">Salvar</button>
-            <button type="button" id="pe-cancel-btn" class="btn-secondary">Cancelar</button>
+            <button type="button" id="pe-save-btn">Save</button>
+            <button type="button" id="pe-cancel-btn" class="btn-secondary">Cancel</button>
           </div>
         </div>
         <div class="row queue-row">
           <div class="queue-actions">
-            <button type="button" id="queue-btn" class="btn-queue">Iniciar fila</button>
+            <button type="button" id="queue-btn" class="btn-queue">Start queue</button>
           </div>
-          <span class="queue-info" id="queue-info">Selecione as imagens e o prompt inicial — a fila processa ele e todos os seguintes, e continua mesmo se o servidor reiniciar.</span>
+          <span class="queue-info" id="queue-info">Select images and initial prompt — the queue processes this and all following prompts, surviving server restarts.</span>
         </div>
 
         <div class="card queue-panel" id="queue-panel" hidden>
-          <label>Fila (lote atual)</label>
+          <label>Queue (active batch)</label>
           <div class="queue-summary" id="queue-summary"></div>
           <div class="queue-list" id="queue-list"></div>
           <div class="queue-actions" style="margin-top: 0.75rem">
-            <button type="button" id="queue-pause-btn" class="btn-secondary">Pausar</button>
-            <button type="button" id="queue-cancel-btn" class="btn-danger">Cancelar pendentes</button>
-            <button type="button" id="queue-clear-btn" class="btn-secondary">Limpar concluídos</button>
+            <button type="button" id="queue-pause-btn" class="btn-secondary">Pause</button>
+            <button type="button" id="queue-cancel-btn" class="btn-danger">Cancel pending</button>
+            <button type="button" id="queue-clear-btn" class="btn-secondary">Clear completed</button>
           </div>
         </div>
 
-        <label for="prompt" style="margin-top:1rem">O que você quer mudar?</label>
-        <textarea id="prompt" name="prompt" placeholder="Ex: Mantenha a pessoa em &lt;image1&gt;, coloque a camisa de &lt;image2&gt; nela, preserve o rosto e o fundo." required></textarea>
-        <p class="example">Use &lt;image1&gt; para a foto principal e &lt;image2&gt;…&lt;image10&gt; para cada referência enviada.</p>
+        <label for="prompt" style="margin-top:1rem">What do you want to change?</label>
+        <textarea id="prompt" name="prompt" placeholder="e.g. Keep person in &lt;image1&gt;, wear shirt from &lt;image2&gt;, preserve face and background." required></textarea>
+        <p class="example">Use &lt;image1&gt; for primary image and &lt;image2&gt;…&lt;image10&gt; for each uploaded reference.</p>
 
         <div class="row">
           <div class="field">
@@ -601,16 +601,16 @@
             <select id="quality" name="quality" class="select-input"></select>
           </div>
           <div class="field field-narrow">
-            <label for="resolution">Tamanho (px)</label>
+            <label for="resolution">Size (px)</label>
             <input type="number" id="resolution" name="resolution" min="512" max="1536" step="64" value="1024">
           </div>
           <div class="field field-narrow">
-            <label for="steps">Passos</label>
+            <label for="steps">Steps</label>
             <input type="number" id="steps" name="steps" min="4" max="50" step="1" value="25">
           </div>
-          <button type="submit" id="btn">Gerar imagem</button>
+          <button type="submit" id="btn">Generate image</button>
         </div>
-        <p class="example">Imagens de celular (ex. 1440×2560) são reduzidas antes de gerar — isso acelera muito.</p>
+        <p class="example">Mobile photos (e.g. 1440×2560) are resized before generating — greatly speeding up execution.</p>
 
         <div class="status" id="status"></div>
         <div class="result" id="result"></div>
@@ -619,18 +619,18 @@
 
     <div class="gallery">
       <div class="gallery-head">
-        <h2 id="gallery-title">Galeria</h2>
+        <h2 id="gallery-title">Gallery</h2>
         <div class="gallery-actions">
-          <select id="gallery-filter" class="select-input" title="Filtro da galeria">
-            <option value="all">Todas as imagens</option>
-            <option value="stale">Só preset desatualizado</option>
+          <select id="gallery-filter" class="select-input" title="Gallery filter">
+            <option value="all">All images</option>
+            <option value="stale">Outdated preset only</option>
           </select>
-          <select id="gallery-slot-filter" class="select-input" title="Preset editado neste slot (5h)">
-            <option value="">Qualquer slot</option>
+          <select id="gallery-slot-filter" class="select-input" title="Preset edited in this slot (5h)">
+            <option value="">Any slot</option>
           </select>
-          <button type="button" id="regen-stale-btn" class="btn-queue">Regerar presets novos</button>
-          <button type="button" id="download-all-btn" class="btn-secondary">Baixar todas</button>
-          <button type="button" id="delete-all-btn" class="btn-danger">Apagar todas</button>
+          <button type="button" id="regen-stale-btn" class="btn-queue">Regenerate updated presets</button>
+          <button type="button" id="download-all-btn" class="btn-secondary">Download all</button>
+          <button type="button" id="delete-all-btn" class="btn-danger">Delete all</button>
         </div>
       </div>
       <div class="thumbs" id="gallery"></div>
@@ -638,19 +638,19 @@
   </div>
 
   <div id="lightbox" class="lightbox" hidden tabindex="-1">
-    <button type="button" class="lightbox-close" id="lightbox-close" aria-label="Fechar">×</button>
-    <button type="button" class="lightbox-nav lightbox-prev" id="lightbox-prev" aria-label="Anterior">‹</button>
-    <button type="button" class="lightbox-nav lightbox-next" id="lightbox-next" aria-label="Próximo">›</button>
+    <button type="button" class="lightbox-close" id="lightbox-close" aria-label="Close">×</button>
+    <button type="button" class="lightbox-nav lightbox-prev" id="lightbox-prev" aria-label="Previous">‹</button>
+    <button type="button" class="lightbox-nav lightbox-next" id="lightbox-next" aria-label="Next">›</button>
     <div class="lightbox-content" id="lightbox-content">
       <img id="lightbox-img" src="" alt="">
       <div class="lightbox-counter" id="lightbox-counter"></div>
       <div class="lightbox-clear-prompt" id="lightbox-clear-prompt" hidden>
-        <button type="button" id="lightbox-clear-prompt-btn">Apagar preset da lista</button>
+        <button type="button" id="lightbox-clear-prompt-btn">Delete preset from list</button>
       </div>
       <div class="lightbox-delete-prompt" id="lightbox-delete-prompt" hidden>
-        Apagar esta imagem? <kbd>Enter</kbd> confirmar · <kbd>Esc</kbd> cancelar
+        Delete this image? <kbd>Enter</kbd> confirm · <kbd>Esc</kbd> cancel
       </div>
-      <div class="lightbox-hint"><kbd>←</kbd> <kbd>→</kbd> navegar · <kbd>D</kbd> apagar · <kbd>Esc</kbd> fechar</div>
+      <div class="lightbox-hint"><kbd>←</kbd> <kbd>→</kbd> navigate · <kbd>D</kbd> delete · <kbd>Esc</kbd> close</div>
     </div>
   </div>
 
@@ -691,7 +691,7 @@
       poolSelection = [...locals.map(e => e.id), ...poolSelection];
       renderPool();
       const oldIds = locals.map(e => e.id);
-      poolCountEl.textContent = `Salvando ${locals.length} foto(s) no pool...`;
+      poolCountEl.textContent = `Saving ${locals.length} photo(s) to pool...`;
       try {
         const fd = new FormData();
         locals.forEach(e => fd.append('images', e.file, e.name || 'image.png'));
@@ -705,12 +705,12 @@
           .map(x => (map.has(x) ? map.get(x) : x))
           .filter(Boolean);
         await loadPool();
-        setStatus(`${newIds.length} foto(s) salvas no pool.`, 'done');
+        setStatus(`${newIds.length} photo(s) saved to pool.`, 'done');
       } catch (err) {
         poolImages = poolImages.filter(p => !oldIds.includes(p.id));
         poolSelection = poolSelection.filter(x => !oldIds.includes(x));
         renderPool();
-        setStatus('Erro ao salvar fotos no pool: ' + err.message, 'error');
+        setStatus('Error saving photos to pool: ' + err.message, 'error');
       }
     }
 
@@ -725,7 +725,7 @@
         locals.forEach(p => {
           if (!poolSelection.includes(p.id)) poolSelection.unshift(p.id);
         });
-      } catch { /* servidor reiniciando — tenta de novo no próximo poll */ }
+      } catch { /* server restarting — retry on next poll */ }
       renderPool();
     }
 
@@ -752,7 +752,7 @@
         renderPool();
         return;
       }
-      if (!confirm('Remover esta imagem do pool?')) return;
+      if (!confirm('Remove this image from pool?')) return;
       const res = await fetch('/api/pool/' + encodeURIComponent(id), { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -770,9 +770,9 @@
         const n = rank.get(p.id);
         const src = p.thumb_url || p.file_url || '';
         const actions = p.file
-          ? `<button type="button" data-act="up" title="Subir prioridade">↑</button>`
-          : `<button type="button" data-act="up" title="Subir prioridade">↑</button>
-             <button type="button" data-act="rm" title="Remover do pool">×</button>`;
+          ? `<button type="button" data-act="up" title="Increase priority">↑</button>`
+          : `<button type="button" data-act="up" title="Increase priority">↑</button>
+             <button type="button" data-act="rm" title="Remove from pool">×</button>`;
         return `<div class="pool-item${n ? ' selected' : ''}" data-id="${escHtml(p.id)}" title="${escHtml(p.name || '')}">
           ${n ? `<span class="pool-badge">${n}</span>` : ''}
           <div class="pool-item-actions">${actions}</div>
@@ -780,7 +780,7 @@
           <div class="pool-item-name">${escHtml(p.name || p.id)}</div>
         </div>`;
       }).join('');
-      poolCountEl.textContent = `${poolSelection.length} de ${poolImages.length} selecionada(s)`;
+      poolCountEl.textContent = `${poolSelection.length} of ${poolImages.length} selected`;
       poolGridEl.querySelectorAll('.pool-item').forEach(el => {
         const id = el.dataset.id;
         el.addEventListener('click', e => {
@@ -840,7 +840,7 @@
       const rm = document.createElement('button');
       rm.type = 'button';
       rm.className = 'btn-secondary';
-      rm.textContent = 'Remover';
+      rm.textContent = 'Remove';
       rm.addEventListener('click', () => row.remove());
       row.appendChild(input);
       row.appendChild(rm);
@@ -855,14 +855,14 @@
       peRefsEl.innerHTML = refs.map(r => `
         <div class="pe-ref-item" data-ref-id="${escHtml(r.id)}">
           <img src="${escHtml(r.url)}" alt="">
-          <button type="button" class="pe-ref-del" title="Remover">×</button>
+          <button type="button" class="pe-ref-del" title="Remove">×</button>
         </div>`).join('');
       peRefsEl.querySelectorAll('.pe-ref-del').forEach(btn => {
         btn.addEventListener('click', async () => {
           const wrap = btn.closest('.pe-ref-item');
           const refId = wrap?.dataset.refId;
           if (!promptEditorId || !refId) return;
-          if (!confirm('Remover esta referência do preset?')) return;
+          if (!confirm('Remove this reference from preset?')) return;
           const res = await fetch(`/api/prompts/${encodeURIComponent(promptEditorId)}/references/${encodeURIComponent(refId)}`, { method: 'DELETE' });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) { alert(data.error || res.statusText); return; }
@@ -1053,11 +1053,11 @@
       const curP = presetSlotFilterEl?.value || '';
       const curG = gallerySlotFilterEl?.value || '';
       if (presetSlotFilterEl) {
-        presetSlotFilterEl.innerHTML = '<option value="">Qualquer slot</option>' + opts;
+        presetSlotFilterEl.innerHTML = '<option value="">Any slot</option>' + opts;
         if (curP && sorted.some(s => s.key === curP)) presetSlotFilterEl.value = curP;
       }
       if (gallerySlotFilterEl) {
-        gallerySlotFilterEl.innerHTML = '<option value="">Qualquer slot</option>' + opts;
+        gallerySlotFilterEl.innerHTML = '<option value="">Any slot</option>' + opts;
         if (curG && sorted.some(s => s.key === curG)) gallerySlotFilterEl.value = curG;
       }
     }
@@ -1067,7 +1067,7 @@
       const cats = [...new Set(promptPresets.map(p => p.category))].sort();
       const cur = presetCategoryFilterEl.value;
       presetCategoryFilterEl.innerHTML =
-        '<option value="">Todas categorias</option>' +
+        '<option value="">All categories</option>' +
         cats.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
       if (cats.includes(cur)) presetCategoryFilterEl.value = cur;
     }
@@ -1081,7 +1081,7 @@
         (byCategory[p.category] ||= []).push(p);
       });
       const categories = Object.keys(byCategory).sort();
-      const parts = ['<option value="">— Escolha um prompt salvo —</option>'];
+      const parts = ['<option value="">— Choose a saved prompt —</option>'];
       for (const category of categories) {
         parts.push(`<optgroup label="${category.replace(/"/g, '&quot;')}">`);
         for (const item of byCategory[category]) {
@@ -1110,7 +1110,7 @@
       renderPresetOptions(selectId);
       const countEl = document.getElementById('queue-info');
       if (countEl) {
-        countEl.textContent = `Selecione as imagens e o prompt inicial — a fila processa ele e mais ${Math.max(0, promptPresets.length - 1)} prompt(s) seguintes e sobrevive a reinício do servidor.`;
+        countEl.textContent = `Select images and initial prompt — the queue processes this and the next ${Math.max(0, promptPresets.length - 1)} prompt(s), surviving server restarts.`;
       }
     }
 
@@ -1132,12 +1132,12 @@
       if (peDatesEl) {
         if (preset?.updated_at_iso) {
           const slot = preset.updated_slot_label ? ` · slot ${preset.updated_slot_label}` : '';
-          const created = preset.created_at_iso ? `Criado: ${preset.created_at_iso}. ` : '';
-          peDatesEl.textContent = `${created}Atualizado: ${preset.updated_at_iso}${slot}`;
+          const created = preset.created_at_iso ? `Created: ${preset.created_at_iso}. ` : '';
+          peDatesEl.textContent = `${created}Updated: ${preset.updated_at_iso}${slot}`;
         } else if (mode === 'edit') {
-          peDatesEl.textContent = 'Preset sem data salva — será gravada ao salvar (slot de 5h, horário de Brasília).';
+          peDatesEl.textContent = 'Preset without saved date — will be recorded on save (5h slot, Brasília time).';
         } else {
-          peDatesEl.textContent = 'Novo preset — data e slot (5h, Brasília) ao salvar.';
+          peDatesEl.textContent = 'New preset — date and slot (5h, Brasília) will be recorded on save.';
         }
       }
       promptEditorEl.hidden = false;
@@ -1160,7 +1160,7 @@
         steps: stepsInput.value,
       };
       if (!payload.text) {
-        alert('Texto do prompt é obrigatório.');
+        alert('Prompt text is required.');
         return;
       }
       let res, data;
@@ -1179,7 +1179,7 @@
       }
       data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert('Erro ao salvar: ' + (data.error || res.statusText));
+        alert('Error saving: ' + (data.error || res.statusText));
         return;
       }
       const savedId = data.prompt?.id;
@@ -1210,12 +1210,12 @@
       const id = presetEl.value;
       if (!id) return;
       const preset = promptPresets.find(p => p.id === id);
-      const name = preset?.label || 'este prompt';
-      if (!confirm(`Remover "${name}" permanentemente?`)) return;
+      const name = preset?.label || 'this prompt';
+      if (!confirm(`Permanently remove "${name}"?`)) return;
       const res = await fetch('/api/prompts/' + encodeURIComponent(id), { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert('Erro ao remover: ' + (data.error || res.statusText));
+        alert('Error removing: ' + (data.error || res.statusText));
         return;
       }
       presetEl.value = '';
@@ -1246,7 +1246,7 @@
     document.getElementById('prompt-new-btn').addEventListener('click', () => openPromptEditor('new'));
     document.getElementById('prompt-save-text-btn').addEventListener('click', () => {
       if (!getActivePrompt()) {
-        alert('Digite um texto no campo de prompt primeiro.');
+        alert('Please enter prompt text first.');
         return;
       }
       openPromptEditor('new', { category: 'Custom', label: '', text: getActivePrompt() });
@@ -1255,7 +1255,7 @@
       const id = presetEl.value || selectedPresetId;
       const preset = promptPresets.find(p => p.id === id);
       if (preset) openPromptEditor('edit', preset);
-      else alert('Selecione um prompt no dropdown antes de editar.');
+      else alert('Select a prompt in the dropdown before editing.');
     });
     promptDeleteBtn.addEventListener('click', deleteSelectedPrompt);
     document.getElementById('pe-save-btn').addEventListener('click', savePromptEditor);
@@ -1280,11 +1280,11 @@
     }
 
     async function deleteImage(filename, elToRemove) {
-      if (!confirm('Apagar esta imagem permanentemente?')) return;
+      if (!confirm('Permanently delete this image?')) return;
       try {
         await deleteImageFile(filename);
       } catch (err) {
-        alert('Erro ao apagar: ' + err.message);
+        alert('Error deleting: ' + err.message);
         return;
       }
       if (elToRemove) elToRemove.remove();
@@ -1373,7 +1373,7 @@
       try {
         await deleteImageFile(filename);
       } catch (err) {
-        alert('Erro ao apagar: ' + err.message);
+        alert('Error deleting: ' + err.message);
         cancelLightboxDelete();
         return;
       }
@@ -1419,8 +1419,8 @@
 
     function resultHtml(filename) {
       return `<div class="result-wrap" data-filename="${filename}">
-        <button type="button" class="delete-btn" onclick="deleteImage('${filename}', this.closest('.result-wrap'))">Apagar</button>
-        <img class="thumb-open" src="/output/${filename}" alt="Resultado" onclick="openLightbox('${filename}')">
+        <button type="button" class="delete-btn" onclick="deleteImage('${filename}', this.closest('.result-wrap'))">Delete</button>
+        <img class="thumb-open" src="/output/${filename}" alt="Result" onclick="openLightbox('${filename}')">
       </div>`;
     }
 
@@ -1431,7 +1431,7 @@
     function formatImageWhen(item) {
       const ts = item.created_at || item.mtime;
       const ms = typeof ts === 'number' ? ts * 1000 : Date.parse(ts);
-      return new Date(ms).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+      return new Date(ms).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
     }
 
     function imageHasPromptCaption(item) {
@@ -1444,7 +1444,7 @@
     function imageMetaCaption(item) {
       const when = formatImageWhen(item);
       const stale = item.needs_regen
-        ? '<span class="badge-stale">preset atualizado — regerar</span><br>'
+        ? '<span class="badge-stale">preset updated — regenerate</span><br>'
         : '';
       if (!imageHasPromptCaption(item)) return stale + escHtml(when);
       const id = item.prompt_id && item.prompt_id !== 'custom' ? item.prompt_id : (item.prompt_id || 'custom');
@@ -1455,14 +1455,14 @@
 
     async function clearImagePrompt(filename, elToRefresh) {
       const meta = lightboxMeta[filename] || {};
-      const presetName = meta.prompt_label || meta.prompt_id || 'este prompt';
+      const presetName = meta.prompt_label || meta.prompt_id || 'this prompt';
       const msg = meta.prompt_id && meta.prompt_id !== 'custom'
-        ? `Remover o preset «${presetName}» da lista e apagar a legenda desta foto?`
-        : 'Apagar a legenda do prompt desta foto? (não há preset salvo vinculado)';
+        ? `Remove preset «${presetName}» from list and delete caption for this image?`
+        : 'Delete prompt caption for this image? (no saved preset linked)';
       if (!confirm(msg)) return;
       const res = await fetch('/api/image/' + encodeURIComponent(filename) + '/prompt', { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Falha ao apagar');
+      if (!res.ok) throw new Error(data.error || 'Failed to delete');
       if (data.preset_deleted && Array.isArray(data.prompts)) {
         promptPresets = data.prompts;
         renderPresetOptions();
@@ -1495,22 +1495,22 @@
       const staleCount = data.stale_count ?? 0;
       if (title) {
         title.textContent = staleOnly
-          ? `Galeria — preset desatualizado (${(data.images || []).length})`
-          : `Galeria (${(data.images || []).length} imagens · ${staleCount} para regerar)`;
+          ? `Gallery — outdated presets (${(data.images || []).length})`
+          : `Gallery (${(data.images || []).length} images · ${staleCount} to regenerate)`;
       }
       const el = document.getElementById('gallery');
       el.innerHTML = (data.images || []).map(i => {
         const promptBtn = imageHasPromptCaption(i)
-          ? `<button type="button" class="clear-prompt-btn" title="Remove preset da lista e legenda" onclick="event.stopPropagation(); clearImagePrompt('${i.filename}', this.closest('.thumb-card')).catch(e => alert(e.message))">Preset</button>`
+          ? `<button type="button" class="clear-prompt-btn" title="Remove preset from list and caption" onclick="event.stopPropagation(); clearImagePrompt('${i.filename}', this.closest('.thumb-card')).catch(e => alert(e.message))">Preset</button>`
           : '';
         const metaLink = imageHasPromptCaption(i)
-          ? `<div class="thumb-meta-actions"><button type="button" onclick="clearImagePrompt('${i.filename}', this.closest('.thumb-card')).catch(e => alert(e.message))">Apagar preset da lista</button></div>`
+          ? `<div class="thumb-meta-actions"><button type="button" onclick="clearImagePrompt('${i.filename}', this.closest('.thumb-card')).catch(e => alert(e.message))">Delete preset from list</button></div>`
           : '';
         const staleClass = i.needs_regen ? ' stale-regen' : '';
         return `<div class="thumb-card${staleClass}" data-filename="${i.filename}">
           <div class="thumb-img-wrap">
             ${promptBtn}
-            <button type="button" class="delete-btn" onclick="deleteImage('${i.filename}', this.closest('.thumb-card'))">Apagar</button>
+            <button type="button" class="delete-btn" onclick="deleteImage('${i.filename}', this.closest('.thumb-card'))">Delete</button>
             <img class="thumb-open" src="/output/${i.filename}" alt="" onclick="openLightbox('${i.filename}')">
           </div>
           <div class="thumb-meta">${imageMetaCaption(i)}${metaLink}</div>
@@ -1543,18 +1543,18 @@
             : '~5 min';
           const prefix = statusPrefix ? statusPrefix + ' — ' : '';
           const promptPreview = job.prompt ? ` · "${job.prompt.slice(0, 50)}${job.prompt.length > 50 ? '…' : ''}"` : '';
-          setStatus(`${prefix}Gerando... ${Math.floor(elapsed / 60)}m ${elapsed % 60}s (${eta})${promptPreview}`, 'running');
+          setStatus(`${prefix}Generating... ${Math.floor(elapsed / 60)}m ${elapsed % 60}s (${eta})${promptPreview}`, 'running');
           await new Promise(r => setTimeout(r, 3000));
           elapsed += 3;
           continue;
         }
         if (job.status === 'error') {
-          throw new Error(job.error || 'Erro na geração');
+          throw new Error(job.error || 'Generation error');
         }
         if (job.status === 'done' && job.images?.length) {
           const sec = Math.round((job.finished_at - job.started_at) || 0);
           const prefix = statusPrefix ? statusPrefix + ' — ' : '';
-          setStatus(`${prefix}Pronto em ${sec}s!`, 'done');
+          setStatus(`${prefix}Ready in ${sec}s!`, 'done');
           resultEl.innerHTML = job.images.map(f => resultHtml(f)).join('');
           loadGallery();
           return job;
@@ -1575,7 +1575,7 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || res.statusText);
       const newId = (data.items || [])[0]?.id;
-      if (!newId) throw new Error('Falha ao subir a imagem para o pool');
+      if (!newId) throw new Error('Failed to upload image to pool');
       poolImages = poolImages.filter(p => p.id !== entry.id);
       poolSelection = poolSelection.map(x => (x === entry.id ? newId : x));
       await loadPool();
@@ -1584,9 +1584,9 @@
 
     async function submitGeneration(statusPrefix = '') {
       const prompt = getActivePrompt();
-      if (!prompt) throw new Error('Prompt obrigatório');
+      if (!prompt) throw new Error('Prompt is required');
       const poolId = await ensurePoolIdForFirstSelected();
-      if (!poolId) throw new Error('Selecione ao menos uma imagem no pool');
+      if (!poolId) throw new Error('Select at least one image in pool');
       const fd = new FormData(document.getElementById('form'));
       fd.set('prompt', prompt);
       fd.set('image_pool_id', poolId);
@@ -1602,7 +1602,7 @@
       const res = await fetch('/api/quick', { method: 'POST', body: fd });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || res.statusText);
-      setStatus('Na fila prioritária — roda depois do item em curso. Acompanhe no painel da fila.', 'running');
+      setStatus('In priority queue — will run after the in-flight item. Track in queue panel.', 'running');
       startQueuePolling();
       return data;
     }
@@ -1620,19 +1620,19 @@
       queuePanel.hidden = false;
       if (queueInfo) {
         queueInfo.textContent = summary.active
-          ? `Fila do servidor: ${finished}/${total}${summary.paused ? ' (pausada)' : ''}`
-          : (total ? `Fila do servidor concluída: ${total} item(ns).` : 'Fila do servidor vazia.');
+          ? `Server queue: ${finished}/${total}${summary.paused ? ' (paused)' : ''}`
+          : (total ? `Server queue completed: ${total} item(s).` : 'Server queue empty.');
       }
-      const pausedTag = summary.paused ? ' · <span class="paused-tag">pausada</span>' : '';
+      const pausedTag = summary.paused ? ' · <span class="paused-tag">paused</span>' : '';
       const windowTag = summary.truncated
-        ? ` · mostrando ${items.length} de ${total}`
+        ? ` · showing ${items.length} of ${total}`
         : '';
       queueSummaryEl.innerHTML =
-        `Total ${total} · Concluídos ${summary.done ?? 0} · Rodando ${summary.running ?? 0} · Pendentes ${summary.pending ?? 0} · Erros ${summary.error ?? 0}` +
-        ((summary.cancelled || 0) ? ` · Cancelados ${summary.cancelled}` : '') + pausedTag + windowTag;
-      queuePauseBtn.textContent = summary.paused ? 'Retomar' : 'Pausar';
+        `Total ${total} · Completed ${summary.done ?? 0} · Running ${summary.running ?? 0} · Pending ${summary.pending ?? 0} · Errors ${summary.error ?? 0}` +
+        ((summary.cancelled || 0) ? ` · Cancelled ${summary.cancelled}` : '') + pausedTag + windowTag;
+      queuePauseBtn.textContent = summary.paused ? 'Resume' : 'Pause';
       if (!items.length) {
-        queueListEl.innerHTML = '<div class="queue-item" style="color:var(--muted)">Nenhum item na fila.</div>';
+        queueListEl.innerHTML = '<div class="queue-item" style="color:var(--muted)">No items in queue.</div>';
         return;
       }
       queueListEl.innerHTML = items.map((it, idx) => {
@@ -1647,7 +1647,7 @@
           : '';
         const retries = it.retries ? ` · retry ${it.retries}` : '';
         const openBtn = (it.status === 'done' && it.images && it.images.length)
-          ? `<button type="button" class="q-open" data-file="${escHtml(it.images[0])}">ver</button>`
+          ? `<button type="button" class="q-open" data-file="${escHtml(it.images[0])}">view</button>`
           : '';
         return `<div class="queue-item">
           <span class="q-pos">${it.order != null ? it.order : idx + 1}/${total}</span>
@@ -1675,22 +1675,22 @@
         (data.items || []).forEach(it => {
           if (it.lane !== 'quick') return;
           if (it.status === 'running') {
-            setStatus('Gerando item prioritário...', 'running');
+            setStatus('Generating priority item...', 'running');
           } else if (it.status === 'done' && (it.images || []).length && !quickShown.has(it.id)) {
             quickShown.add(it.id);
             resultEl.innerHTML = it.images.map(f => resultHtml(f)).join('');
-            setStatus(`Pronto em ${fmtElapsed(it.elapsed_s)}!`, 'done');
+            setStatus(`Ready in ${fmtElapsed(it.elapsed_s)}!`, 'done');
             loadGallery();
           } else if (it.status === 'error' && !quickErrored.has(it.id)) {
             quickErrored.add(it.id);
-            setStatus('Erro no item prioritário: ' + (it.error || ''), 'error');
+            setStatus('Error in priority item: ' + (it.error || ''), 'error');
           }
         });
         if (!summary.active) {
           stopQueuePolling();
           loadGallery();
         }
-      } catch { /* servidor reiniciando — próxima tentativa em 2s */ }
+      } catch { /* server restarting — retry in 2s */ }
       finally { queueBusy = false; }
     }
 
@@ -1710,33 +1710,33 @@
     async function startBatch() {
       const startId = presetEl.value;
       if (!startId) {
-        alert('Escolha o prompt inicial no dropdown — a fila vai dele até o fim da lista.');
+        alert('Choose an initial prompt in the dropdown — the queue will process from it to the end of the list.');
         return;
       }
       if (!poolSelection.length) {
-        alert('Selecione ao menos uma imagem no pool.');
+        alert('Select at least one image in pool.');
         return;
       }
       const startIdx = promptPresets.findIndex(p => p.id === startId);
       const presetCount = startIdx >= 0 ? (promptPresets.length - startIdx) : 1;
       const totalGen = poolSelection.length * presetCount;
-      const fmtNum = n => n.toLocaleString('pt-BR');
+      const fmtNum = n => n.toLocaleString('en-US');
       const fmtDur = mins => {
         if (mins < 60) return `~${mins} min`;
         const h = mins / 60;
         if (h < 48) return `~${h.toFixed(1)} h`;
-        return `~${(h / 24).toFixed(1)} dias`;
+        return `~${(h / 24).toFixed(1)} days`;
       };
-      let msg = `${poolSelection.length} imagem(ns) × ${presetCount} prompt(s) = ${fmtNum(totalGen)} gerações.\n` +
-        `Tempo estimado: ${fmtDur(totalGen * 2)} (a ~2 min por imagem).`;
+      let msg = `${poolSelection.length} image(s) × ${presetCount} prompt(s) = ${fmtNum(totalGen)} generations.\n` +
+        `Estimated time: ${fmtDur(totalGen * 2)} (at ~2 min per image).`;
       if (totalGen > 500) {
-        msg = `ATENÇÃO — lote muito grande!\n\n${msg}\n\nContinuar mesmo assim?`;
+        msg = `WARNING — very large batch!\n\n${msg}\n\nContinue anyway?`;
       } else if (totalGen > 50) {
-        msg += `\n\nContinuar?`;
+        msg += `\n\nContinue?`;
       }
       if (totalGen > 50 && !confirm(msg)) return;
       queueBtn.disabled = true;
-      setStatus('Enviando lote...', 'running');
+      setStatus('Submitting batch...', 'running');
       try {
         const locals = poolSelection.map(poolEntry).filter(p => p && p.file);
         let newIds = [];
@@ -1771,11 +1771,11 @@
         const res2 = await fetch('/api/batch', { method: 'POST', body: fd2 });
         const data2 = await res2.json().catch(() => ({}));
         if (!res2.ok) throw new Error(data2.error || res2.statusText);
-        setStatus(`Lote enfileirado: ${fmtNum(data2.total)} itens (${data2.images} imagem(ns) × ${data2.presets} prompts).`, 'done');
+        setStatus(`Batch enqueued: ${fmtNum(data2.total)} items (${data2.images} image(s) × ${data2.presets} prompts).`, 'done');
         await loadPool();
         startQueuePolling();
       } catch (err) {
-        setStatus('Erro: ' + err.message, 'error');
+        setStatus('Error: ' + err.message, 'error');
       } finally {
         queueBtn.disabled = false;
       }
@@ -1787,7 +1787,7 @@
       await pollQueue();
     });
     queueCancelBtn.addEventListener('click', async () => {
-      if (!confirm('Cancelar todos os itens pendentes da fila? Os itens já submetidos ao ComfyUI (até 2) terminam normalmente.')) return;
+      if (!confirm('Cancel all pending queue items? Already submitted ComfyUI items (up to 2) will finish normally.')) return;
       await fetch('/api/queue/cancel', { method: 'POST' });
       await pollQueue();
     });
@@ -1802,21 +1802,21 @@
       const data = await res.json();
       const images = data.images || [];
       if (!images.length) {
-        alert('Nenhuma imagem para baixar.');
+        alert('No images to download.');
         return;
       }
-      if (!confirm(`Baixar ${images.length} imagem(ns)?`)) return;
+      if (!confirm(`Download ${images.length} image(s)?`)) return;
 
       const downloadBtn = document.getElementById('download-all-btn');
       downloadBtn.disabled = true;
-      downloadBtn.textContent = 'Baixando...';
+      downloadBtn.textContent = 'Downloading...';
 
       try {
         if (window.showDirectoryPicker) {
           const dir = await window.showDirectoryPicker();
           for (let i = 0; i < images.length; i++) {
             const filename = images[i].filename;
-            downloadBtn.textContent = `Salvando ${i + 1}/${images.length}...`;
+            downloadBtn.textContent = `Saving ${i + 1}/${images.length}...`;
             const resp = await fetch('/output/' + encodeURIComponent(filename));
             if (!resp.ok) continue;
             const blob = await resp.blob();
@@ -1828,7 +1828,7 @@
         } else {
           for (let i = 0; i < images.length; i++) {
             const filename = images[i].filename;
-            downloadBtn.textContent = `Baixando ${i + 1}/${images.length}...`;
+            downloadBtn.textContent = `Downloading ${i + 1}/${images.length}...`;
             const a = document.createElement('a');
             a.href = '/output/' + encodeURIComponent(filename);
             a.download = filename;
@@ -1839,10 +1839,10 @@
           }
         }
       } catch (err) {
-        if (err.name !== 'AbortError') alert('Erro ao baixar: ' + err.message);
+        if (err.name !== 'AbortError') alert('Error downloading: ' + err.message);
       } finally {
         downloadBtn.disabled = false;
-        downloadBtn.textContent = 'Baixar todas';
+        downloadBtn.textContent = 'Download all';
       }
     }
 
@@ -1851,14 +1851,14 @@
       const data = await res.json();
       const count = (data.images || []).length;
       if (!count) {
-        alert('Nenhuma imagem para apagar.');
+        alert('No images to delete.');
         return;
       }
-      if (!confirm(`Apagar todas as ${count} imagens permanentemente?`)) return;
+      if (!confirm(`Permanently delete all ${count} images?`)) return;
       const del = await fetch('/api/images', { method: 'DELETE' });
       const result = await del.json().catch(() => ({}));
       if (!del.ok) {
-        alert('Erro: ' + (result.error || del.statusText));
+        alert('Error: ' + (result.error || del.statusText));
         return;
       }
       resultEl.innerHTML = '';
@@ -1888,17 +1888,17 @@
       if (gSlot) countUrl += '&slot=' + encodeURIComponent(gSlot);
       const staleCount = (await (await fetch(countUrl)).json()).stale_count || 0;
       if (!staleCount) {
-        alert('Nenhuma imagem com preset desatualizado.');
+        alert('No images with outdated preset.');
         return;
       }
       const useFilter = galleryFilterEl?.value === 'stale';
       const msg = useFilter
-        ? `Regerar ${staleCount} imagem(ns) visíveis com filtro? Usa cada PNG como entrada e o texto atual do preset.`
-        : `Regerar todas as ${staleCount} imagem(ns) com preset desatualizado?`;
+        ? `Regenerate ${staleCount} filtered visible image(s)? Uses each PNG as input and the preset's current text.`
+        : `Regenerate all ${staleCount} image(s) with outdated preset?`;
       if (!confirm(msg)) return;
       const regenBtn = document.getElementById('regen-stale-btn');
       regenBtn.disabled = true;
-      setStatus('Enfileirando regerações…', 'running');
+      setStatus('Enqueueing regenerations…', 'running');
       try {
         const body = {
           model: document.getElementById('model').value,
@@ -1917,13 +1917,13 @@
         let done = 0;
         while (true) {
           if (!data.queued) {
-            if (done === 0) setStatus(data.message || 'Nada para regerar.', 'done');
+            if (done === 0) setStatus(data.message || 'Nothing to regenerate.', 'done');
             break;
           }
           const job = data.job;
           const total = done + 1 + (data.remaining || 0);
-          setStatus(`Regerando ${done + 1}/${total}: ${job.prompt_label || job.filename}…`, 'running');
-          await pollJob(job.job_id, `Regerar ${done + 1}`);
+          setStatus(`Regenerating ${done + 1}/${total}: ${job.prompt_label || job.filename}…`, 'running');
+          await pollJob(job.job_id, `Regenerating ${done + 1}`);
           done++;
           if (!data.remaining) break;
           const next = await fetch('/api/regenerate-stale', {
@@ -1934,10 +1934,10 @@
           data = await next.json();
           if (!next.ok) throw new Error(data.error || next.statusText);
         }
-        setStatus(`Regeração concluída — ${done} imagem(ns).`, 'done');
+        setStatus(`Regeneration complete — ${done} image(s).`, 'done');
         loadGallery();
       } catch (err) {
-        setStatus('Erro: ' + err.message, 'error');
+        setStatus('Error: ' + err.message, 'error');
       } finally {
         regenBtn.disabled = false;
       }
@@ -1948,11 +1948,11 @@
       e.preventDefault();
       btn.disabled = true;
       resultEl.innerHTML = '';
-      setStatus('Enviando...', 'running');
+      setStatus('Submitting...', 'running');
       try {
         await submitGeneration();
       } catch (err) {
-        setStatus('Erro: ' + err.message, 'error');
+        setStatus('Error: ' + err.message, 'error');
       }
       btn.disabled = false;
     });
