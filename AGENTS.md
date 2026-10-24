@@ -1,6 +1,6 @@
-# AGENTS.md
+# AGENTS.md — QwenSwarm
 
-How the project works and how we operate it (implementation history as of October 2026).
+How QwenSwarm works and how we operate it (implementation history as of October 2026).
 
 ## Structure
 

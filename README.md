@@ -1,4 +1,4 @@
-# AIServer: Distributed ComfyUI & Qwen Image Generation Cluster
+# QwenSwarm: Distributed ComfyUI & Qwen Image Generation Cluster
 
 A distributed, production-grade image generation and editing cluster powered by **ComfyUI** and **Qwen Image 2.1** (quantized GGUF with Pruna 8-step LoRA). Built for high-throughput batch generation, real-time priority editing, and resilient multi-GPU scaling across heterogeneous hardware.
 
