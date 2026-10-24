@@ -210,4 +210,4 @@ sudo systemctl start comfyui.service qwen-satellite.service
 
 ## License
 
-Internal proprietary research & generation infrastructure.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
