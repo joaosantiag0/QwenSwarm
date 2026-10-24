@@ -82,6 +82,7 @@ STAGING_DIR = WEB_ROOT / "staging"
 POOL_DIR = STAGING_DIR / "pool"
 POOL_FILE = STAGING_DIR / "pool.json"
 QUEUE_REFS_DIR = STAGING_DIR / "queue_refs"
+RESIZED_DIR = STAGING_DIR / "resized"
 QUEUE_FILE = WEB_ROOT / "queue.json"
 POOL_THUMB_SIZE = 256
 QUEUE_MAX_RETRIES = 1
@@ -661,6 +662,7 @@ def build_prompt_qwen21(
     resolution: int,
     filename_prefix: str = "qwen_web",
     use_pruna: bool = False,
+    switch: bool = False,
 ) -> dict:
     ref_images = [r for r in (ref_images or []) if r][:MAX_REFERENCE_IMAGES]
     with WORKFLOW_QWEN21.open() as f:
@@ -676,6 +678,7 @@ def build_prompt_qwen21(
     subgraph_widget_map["steps"] = steps
     subgraph_widget_map["resolution"] = resolution
     subgraph_widget_map["seed"] = random.randint(0, 2**53)
+    subgraph_widget_map["switch"] = switch
     prefix = "459:"
 
     sg_input_map = {}
@@ -852,6 +855,7 @@ def build_prompt(
     width: int,
     height: int,
     filename_prefix: str = "qwen_web",
+    switch: bool = False,
 ) -> dict:
     refs = [r for r in (ref_images or []) if r]
     if model == "rapid":
@@ -866,6 +870,7 @@ def build_prompt(
         resolution,
         filename_prefix,
         use_pruna=(model == "qwen21_pruna"),
+        switch=switch,
     )
 
 
@@ -892,12 +897,12 @@ def comfy_wait(prompt_id: str, timeout_s: int = 900) -> list[str]:
         with urllib.request.urlopen(f"{COMFY_API}/history/{prompt_id}", timeout=15) as resp:
             hist = json.loads(resp.read())
         if prompt_id not in hist:
-            time.sleep(3)
+            time.sleep(1)
             continue
         entry = hist[prompt_id]
         status = entry.get("status", {})
         if not status.get("completed"):
-            time.sleep(3)
+            time.sleep(1)
             continue
         for msg in status.get("messages", []):
             if msg[0] == "execution_error":
@@ -1486,6 +1491,35 @@ def add_pool_images(uploads: list) -> list[dict]:
     return out
 
 
+def save_pool_image_bytes(data_bytes: bytes, filename: str = "image.png") -> dict:
+    POOL_DIR.mkdir(parents=True, exist_ok=True)
+    pool_id = uuid.uuid4().hex[:12]
+    ext = Path(filename).suffix.lower()
+    if ext not in POOL_EXTS:
+        ext = ".png"
+    main_name = f"{pool_id}_main{ext}"
+    dest = POOL_DIR / main_name
+    dest.write_bytes(data_bytes)
+    try:
+        w, h = make_pool_thumb(dest, POOL_DIR / f"{pool_id}_thumb.jpg")
+    except Exception:
+        dest.unlink(missing_ok=True)
+        raise ValueError("Arquivo de imagem inválido ou corrompido")
+    rec = {
+        "id": pool_id,
+        "file": main_name,
+        "original_name": Path(filename).name,
+        "width": w,
+        "height": h,
+        "added_at": time.time(),
+    }
+    with pool_lock:
+        items = load_pool()
+        items.append(rec)
+        save_pool(items)
+    return rec
+
+
 def delete_pool_image(pool_id: str) -> bool:
     pid = safe_pool_id(pool_id)
     if not pid:
@@ -1528,6 +1562,39 @@ def pool_image_record(pool_id: str) -> dict | None:
     return None
 
 
+def get_or_create_blank_canvas_pool_id(resolution: int = 1024) -> str:
+    """Retorna o pool_id de um canvas neutro vazio para geração text-to-image sem imagem base."""
+    from PIL import Image
+
+    pid = f"blank_{resolution}"
+    rec = pool_image_record(pid)
+    if rec:
+        p = pool_main_path(rec)
+        if p and p.is_file():
+            return pid
+    POOL_DIR.mkdir(parents=True, exist_ok=True)
+    main_name = f"{pid}_main.png"
+    dest = POOL_DIR / main_name
+    im = Image.new("RGB", (resolution, resolution), color=(0, 0, 0))
+    im.save(dest, format="PNG")
+    make_pool_thumb(dest, POOL_DIR / f"{pid}_thumb.jpg")
+    rec = {
+        "id": pid,
+        "file": main_name,
+        "original_name": "blank_canvas.png",
+        "width": resolution,
+        "height": resolution,
+        "added_at": time.time(),
+        "is_blank": True,
+    }
+    with pool_lock:
+        items = load_pool()
+        items = [x for x in items if x.get("id") != pid]
+        items.append(rec)
+        save_pool(items)
+    return pid
+
+
 def stage_queue_item_uploads(item_id: str, uploads: list) -> list[str]:
     """Refs enviadas na hora do quick ficam em staging/queue_refs/<item_id>/."""
     if not uploads:
@@ -1546,6 +1613,53 @@ def stage_queue_item_uploads(item_id: str, uploads: list) -> list[str]:
         name = f"ref_{i}{ext}"
         with (dest_dir / name).open("wb") as f:
             shutil.copyfileobj(field.file, f)
+        names.append(name)
+    return names
+
+
+def stage_queue_item_bytes(item_id: str, byte_list: list[bytes]) -> list[str]:
+    """Salva referências fornecidas em bytes/base64 em staging/queue_refs/<item_id>/."""
+    if not byte_list:
+        return []
+    dest_dir = QUEUE_REFS_DIR / item_id
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    existing = [f.name for f in dest_dir.iterdir() if f.is_file()]
+    start_idx = len(existing)
+    names: list[str] = []
+    for i, raw in enumerate(byte_list):
+        if len(names) + start_idx >= MAX_REFERENCE_IMAGES:
+            break
+        if not raw:
+            continue
+        idx = start_idx + len(names)
+        name = f"ref_{idx}.png"
+        (dest_dir / name).write_bytes(raw)
+        names.append(name)
+    return names
+
+
+def stage_queue_item_from_pool_ids(item_id: str, pool_ids: list[str]) -> list[str]:
+    """Copia referências do pool de imagens para staging/queue_refs/<item_id>/."""
+    if not pool_ids:
+        return []
+    dest_dir = QUEUE_REFS_DIR / item_id
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    existing = [f.name for f in dest_dir.iterdir() if f.is_file()]
+    start_idx = len(existing)
+    names: list[str] = []
+    for pid in pool_ids:
+        if len(names) + start_idx >= MAX_REFERENCE_IMAGES:
+            break
+        rec = pool_image_record(pid)
+        if not rec:
+            continue
+        p = pool_main_path(rec)
+        if not p or not p.is_file():
+            continue
+        idx = start_idx + len(names)
+        ext = p.suffix.lower() or ".png"
+        name = f"ref_{idx}{ext}"
+        shutil.copy(p, dest_dir / name)
         names.append(name)
     return names
 
@@ -1586,18 +1700,32 @@ def save_queue_locked() -> None:
     tmp.replace(QUEUE_FILE)
 
 
+def queue_item_priority(it: dict) -> int:
+    try:
+        return int(it.get("priority") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def queue_next_pending() -> dict | None:
-    """Próximo item: prioritários (quick) primeiro, depois batch por ordem."""
+    """Próximo item: quick primeiro (por prioridade e inserção), depois batch por prioridade e inserção."""
     quick = None
+    quick_priority = None
     batch = None
+    batch_priority = None
     for it in queue_items.values():
         if it.get("status") != "pending":
             continue
         if it.get("lane") == "quick":
-            if quick is None:
+            pr = queue_item_priority(it)
+            if quick is None or quick_priority is None or pr > quick_priority:
                 quick = it
-        elif batch is None:
-            batch = it
+                quick_priority = pr
+        else:
+            pr = queue_item_priority(it)
+            if batch is None or batch_priority is None or pr > batch_priority:
+                batch = it
+                batch_priority = pr
     return quick or batch
 
 
@@ -1611,6 +1739,89 @@ def update_queue_item(item_id: str, **fields) -> None:
         queue_lock.notify_all()
 
 
+def worker_lease_items(worker_id: str, count: int = 20) -> list[dict]:
+    """Reserva até `count` itens pendentes para um worker satélite (ex: notebook 3060)."""
+    leased = []
+    now = time.time()
+    with queue_lock:
+        # Recupera itens com lease expirado (> 45 minutos)
+        for it in queue_items.values():
+            if it.get("status") == "leased":
+                leased_at = float(it.get("leased_at") or 0)
+                if now - leased_at > 2700:
+                    it["status"] = "pending"
+                    it.pop("leased_to", None)
+                    it.pop("leased_at", None)
+
+        candidates = [it for it in queue_items.values() if it.get("status") == "pending"]
+        candidates.sort(
+            key=lambda x: (
+                0 if x.get("lane") == "quick" else 1,
+                -queue_item_priority(x),
+                x.get("order") or 0,
+            )
+        )
+
+        selected = candidates[:count]
+        for it in selected:
+            it["status"] = "leased"
+            it["leased_to"] = worker_id
+            it["leased_at"] = now
+            leased.append({
+                "id": it["id"],
+                "batch_id": it.get("batch_id"),
+                "order": it.get("order"),
+                "lane": it.get("lane"),
+                "pool_id": it.get("pool_id"),
+                "prompt": it.get("prompt"),
+                "prompt_preset_id": it.get("prompt_preset_id"),
+                "prompt_preset_label": it.get("prompt_preset_label"),
+                "model": it.get("model") or "qwen21_pruna",
+                "resolution": it.get("resolution") or 1024,
+                "steps": it.get("steps") or 25,
+                "ref_ids": it.get("ref_ids"),
+                "extra_refs": it.get("extra_refs"),
+                "is_text_to_image": bool(it.get("is_text_to_image")),
+            })
+        if selected:
+            save_queue_locked()
+            queue_lock.notify_all()
+    return leased
+
+
+def worker_complete_item(item_id: str, filename: str, finished_at: float | None = None) -> bool:
+    """Registra conclusão de um item gerado por um worker satélite."""
+    finished = finished_at or time.time()
+    with queue_lock:
+        it = queue_items.get(item_id)
+        if it is None:
+            return False
+        it["status"] = "done"
+        it["images"] = [filename]
+        it["finished_at"] = finished
+        it.pop("leased_to", None)
+        it.pop("leased_at", None)
+        sync_queue_meta(it, [filename], finished)
+        save_queue_locked()
+        queue_lock.notify_all()
+    return True
+
+
+def worker_fail_item(item_id: str, error: str = "") -> bool:
+    """Devolve item para pending em caso de erro no worker satélite."""
+    with queue_lock:
+        it = queue_items.get(item_id)
+        if it is None:
+            return False
+        it["status"] = "pending"
+        it["error"] = error or "Worker failure"
+        it.pop("leased_to", None)
+        it.pop("leased_at", None)
+        save_queue_locked()
+        queue_lock.notify_all()
+    return True
+
+
 def queue_item_public(it: dict, pool_map: dict) -> dict:
     pool_id = it.get("pool_id") or ""
     rec = pool_map.get(pool_id, {})
@@ -1621,6 +1832,7 @@ def queue_item_public(it: dict, pool_map: dict) -> dict:
         "id": it.get("id"),
         "batch_id": it.get("batch_id"),
         "order": it.get("order"),
+        "priority": queue_item_priority(it),
         "lane": it.get("lane") or "batch",
         "status": it.get("status"),
         "pool_id": pool_id,
@@ -1655,17 +1867,18 @@ def queue_view(limit: int = 120) -> dict:
             "total": len(all_items),
             "pending": sum(1 for x in all_items if x.get("status") == "pending"),
             "running": sum(1 for x in all_items if x.get("status") == "running"),
+            "leased": sum(1 for x in all_items if x.get("status") == "leased"),
             "done": sum(1 for x in all_items if x.get("status") == "done"),
             "error": sum(1 for x in all_items if x.get("status") == "error"),
             "cancelled": sum(1 for x in all_items if x.get("status") == "cancelled"),
             "paused": queue_paused,
-            "active": any(x.get("status") in ("pending", "running") for x in all_items),
+            "active": any(x.get("status") in ("pending", "running", "leased") for x in all_items),
         }
         batch_id = queue_current_batch
     pool_map = {r["id"]: r for r in load_pool()}
     total = len(snapshot)
     if total > limit:
-        running = [x for x in snapshot if x.get("status") == "running"]
+        running = [x for x in snapshot if x.get("status") in ("running", "leased")]
         pending = [x for x in snapshot if x.get("status") == "pending"]
         finished = [x for x in snapshot if x.get("status") in ("done", "error", "cancelled")]
         take_fin = min(len(finished), max(20, limit // 4))
@@ -1707,94 +1920,145 @@ def sync_queue_meta(it: dict, filenames: list[str], finished: float) -> None:
         )
 
 
-def process_queue_item(item: dict) -> None:
+def submit_queue_item(item: dict) -> None:
+    """Estagia, monta o workflow e submete ao ComfyUI. Lança em erro (caller trata)."""
     item_id = item["id"]
-    try:
-        update_queue_item(item_id, status="running", started_at=time.time())
-        rec = pool_image_record(item.get("pool_id") or "")
-        if not rec:
-            raise ValueError("Imagem do pool não encontrada")
-        src = pool_main_path(rec)
-        if src is None or not src.is_file():
-            raise ValueError("Arquivo da imagem do pool não existe mais")
-        resolution = int(item.get("resolution") or 1024)
-        COMFY_INPUT.mkdir(parents=True, exist_ok=True)
-        dest = COMFY_INPUT / f"web_{item_id}_main{src.suffix.lower() or '.png'}"
-        shutil.copy(src, dest)
-        orig = resize_image_for_qwen(dest, resolution)
-        image1_name = dest.with_suffix(".png").name
-        out_w, out_h = orig[2], orig[3]
-        ref_names, _ref_resize = copy_preset_refs_to_comfy(
-            item.get("prompt_preset_id") or "",
-            item_id,
-            resolution,
-            item.get("ref_ids"),
-        )
-        extra_dir = QUEUE_REFS_DIR / item_id
-        if extra_dir.is_dir():
-            for i, name in enumerate(sorted(item.get("extra_refs") or [])):
-                if len(ref_names) >= MAX_REFERENCE_IMAGES:
-                    break
-                src = (extra_dir / name).resolve()
-                if src.parent != extra_dir.resolve() or not src.is_file():
-                    continue
-                dest = COMFY_INPUT / f"web_{item_id}_xref{i}{src.suffix.lower()}"
-                shutil.copy(src, dest)
-                resize_image_for_qwen(dest, resolution)
-                ref_names.append(dest.with_suffix(".png").name)
-        filename_prefix = make_filename_prefix(item.get("prompt_preset_id"))
-        api_prompt = build_prompt(
-            item["model"],
-            image1_name,
-            ref_names,
-            item["prompt"],
-            int(item.get("steps") or 25),
-            resolution,
-            out_w,
-            out_h,
-            filename_prefix,
-        )
-        prompt_id = comfy_post_prompt(api_prompt)
-        update_queue_item(item_id, prompt_id=prompt_id)
-        filenames = comfy_wait(prompt_id)
-        finished = time.time()
+    with queue_lock:
         it = queue_items.get(item_id)
-        if it is not None:
-            sync_queue_meta(it, filenames, finished)
-        update_queue_item(item_id, status="done", images=filenames, finished_at=finished)
-    except Exception as e:
-        with queue_lock:
-            it = queue_items.get(item_id)
-            if it is None:
-                return
-            if int(it.get("retries") or 0) < QUEUE_MAX_RETRIES:
-                it["retries"] = int(it.get("retries") or 0) + 1
-                it["status"] = "pending"
-                it["error"] = str(e)
-                it["prompt_id"] = None
-                it["started_at"] = None
-            else:
-                it["status"] = "error"
-                it["error"] = str(e)
-                it["finished_at"] = time.time()
-            save_queue_locked()
-            queue_lock.notify_all()
+        if it is None or it.get("status") not in ("pending", "running"):
+            raise ValueError("Item não está mais pendente")
+        if it.get("prompt_id"):
+            return
+        it["status"] = "running"
+        it["started_at"] = time.time()
+        it["error"] = None
+        save_queue_locked()
+        queue_lock.notify_all()
+    rec = pool_image_record(item.get("pool_id") or "")
+    if not rec:
+        raise ValueError("Imagem do pool não encontrada")
+    src = pool_main_path(rec)
+    if src is None or not src.is_file():
+        raise ValueError("Arquivo da imagem do pool não existe mais")
+    resolution = int(item.get("resolution") or 1024)
+    COMFY_INPUT.mkdir(parents=True, exist_ok=True)
+    RESIZED_DIR.mkdir(parents=True, exist_ok=True)
+    image1_name = f"web_{item_id}_main.png"
+    dest = COMFY_INPUT / image1_name
+    cache = RESIZED_DIR / f"{safe_pool_id(str(rec.get('id')))}_{resolution}.png"
+    if cache.is_file():
+        shutil.copy(cache, dest)
+        from PIL import Image
+
+        with Image.open(dest) as im:
+            out_w, out_h = im.size
+    else:
+        raw = COMFY_INPUT / f"web_{item_id}_main{src.suffix.lower() or '.png'}"
+        shutil.copy(src, raw)
+        orig = resize_image_for_qwen(raw, resolution)
+        out_w, out_h = orig[2], orig[3]
+        if dest.is_file() and not cache.is_file():
+            shutil.copy(dest, cache)
+    ref_names, _ref_resize = copy_preset_refs_to_comfy(
+        item.get("prompt_preset_id") or "",
+        item_id,
+        resolution,
+        item.get("ref_ids"),
+    )
+    extra_dir = QUEUE_REFS_DIR / item_id
+    if extra_dir.is_dir():
+        for i, name in enumerate(sorted(item.get("extra_refs") or [])):
+            if len(ref_names) >= MAX_REFERENCE_IMAGES:
+                break
+            xsrc = (extra_dir / name).resolve()
+            if xsrc.parent != extra_dir.resolve() or not xsrc.is_file():
+                continue
+            xdest = COMFY_INPUT / f"web_{item_id}_xref{i}{xsrc.suffix.lower()}"
+            shutil.copy(xsrc, xdest)
+            resize_image_for_qwen(xdest, resolution)
+            ref_names.append(xdest.with_suffix(".png").name)
+    filename_prefix = make_filename_prefix(item.get("prompt_preset_id"))
+    is_t2i = bool(item.get("is_text_to_image") or str(item.get("pool_id", "")).startswith("blank_"))
+    api_prompt = build_prompt(
+        item["model"],
+        image1_name,
+        ref_names,
+        item["prompt"],
+        int(item.get("steps") or 25),
+        resolution,
+        out_w,
+        out_h,
+        filename_prefix,
+        switch=is_t2i,
+    )
+    prompt_id = comfy_post_prompt(api_prompt)
+    update_queue_item(item_id, prompt_id=prompt_id)
+
+
+def finish_queue_item(item: dict) -> None:
+    item_id = item["id"]
+    prompt_id = item.get("prompt_id")
+    if not prompt_id:
+        raise ValueError("Item sem prompt_id submetido")
+    filenames = comfy_wait(prompt_id)
+    finished = time.time()
+    it = queue_items.get(item_id)
+    if it is not None:
+        sync_queue_meta(it, filenames, finished)
+    update_queue_item(item_id, status="done", images=filenames, finished_at=finished)
+
+
+def fail_queue_item(item_id: str, exc: Exception) -> None:
+    with queue_lock:
+        it = queue_items.get(item_id)
+        if it is None or it.get("status") != "running":
+            return
+        if int(it.get("retries") or 0) < QUEUE_MAX_RETRIES:
+            it["retries"] = int(it.get("retries") or 0) + 1
+            it["status"] = "pending"
+            it["error"] = str(exc)
+            it["prompt_id"] = None
+            it["started_at"] = None
+        else:
+            it["status"] = "error"
+            it["error"] = str(exc)
+            it["finished_at"] = time.time()
+        save_queue_locked()
+        queue_lock.notify_all()
 
 
 def queue_worker() -> None:
+    """Worker único com prefetch: submete o próximo item enquanto o atual roda,
+    eliminando a folga (poll+build+POST) entre execuções do ComfyUI.
+    Pausa/cancel só valem para itens ainda não submetidos; no máx. 2 ficam em voo."""
+    prefetch_id: str | None = None
     while True:
         item = None
         with queue_lock:
-            while True:
-                if not queue_paused:
-                    item = queue_next_pending()
-                    if item is not None:
-                        break
+            if prefetch_id:
+                it = queue_items.get(prefetch_id)
+                if it is not None and it.get("status") == "running" and it.get("prompt_id"):
+                    item = it
+                prefetch_id = None
+            if item is None and not queue_paused:
+                item = queue_next_pending()
+            if item is None:
                 queue_lock.wait(timeout=2.0)
+                continue
         try:
-            process_queue_item(item)
+            if not item.get("prompt_id"):
+                submit_queue_item(item)
+            with queue_lock:
+                nxt = None if queue_paused else queue_next_pending()
+            if nxt is not None and nxt["id"] != item["id"]:
+                try:
+                    submit_queue_item(nxt)
+                    prefetch_id = nxt["id"]
+                except Exception as e:
+                    fail_queue_item(nxt["id"], e)
+            finish_queue_item(item)
         except Exception as e:
-            print(f"[fila] erro inesperado no worker: {e}")
+            fail_queue_item(item["id"], e)
 
 
 def ensure_queue_worker() -> None:
@@ -1920,6 +2184,10 @@ def create_quick_item(
     settings: dict,
     ref_ids: list[str] | None,
     extra_uploads: list,
+    priority: int | None = None,
+    extra_ref_bytes: list[bytes] | None = None,
+    extra_ref_pool_ids: list[str] | None = None,
+    is_text_to_image: bool = False,
 ) -> dict:
     """Item prioritário: roda depois do item em curso, na frente dos pendentes."""
     global queue_current_batch
@@ -1930,6 +2198,10 @@ def create_quick_item(
         raise ValueError("Prompt obrigatório")
     item_id = uuid.uuid4().hex[:8]
     extra = stage_queue_item_uploads(item_id, extra_uploads)
+    if extra_ref_bytes:
+        extra.extend(stage_queue_item_bytes(item_id, extra_ref_bytes))
+    if extra_ref_pool_ids:
+        extra.extend(stage_queue_item_from_pool_ids(item_id, extra_ref_pool_ids))
     now = time.time()
     with queue_lock:
         batch_id = queue_current_batch
@@ -1946,12 +2218,23 @@ def create_quick_item(
             ),
             default=0,
         )
+        if priority is None:
+            priority = 1 + max(
+                (
+                    queue_item_priority(it)
+                    for it in queue_items.values()
+                    if it.get("status") == "pending" and it.get("lane") == "quick"
+                ),
+                default=0,
+            )
         item = {
             "id": item_id,
             "batch_id": batch_id,
             "order": order,
+            "priority": priority,
             "lane": "quick",
             "status": "pending",
+            "is_text_to_image": is_text_to_image or str(pool_id).startswith("blank_"),
             "pool_id": pool_id,
             "prompt": prompt_text.strip(),
             "prompt_preset_id": preset_id or "custom",
@@ -1977,6 +2260,105 @@ def create_quick_item(
         queue_lock.notify_all()
     ensure_queue_worker()
     return dict(item)
+
+
+def get_edit_job(item_id: str) -> dict | None:
+    with queue_lock:
+        it = queue_items.get(item_id)
+        if it is not None:
+            it = dict(it)
+    if it is not None:
+        started = it.get("started_at")
+        finished = it.get("finished_at")
+        elapsed = int((finished or time.time()) - started) if started else 0
+        status = it.get("status")
+        images = it.get("images") or []
+        pool_id = it.get("pool_id") or ""
+        return {
+            "id": it.get("id"),
+            "status": status,
+            "lane": it.get("lane") or "quick",
+            "priority": queue_item_priority(it),
+            "pool_id": pool_id,
+            "prompt": it.get("prompt"),
+            "model": it.get("model"),
+            "resolution": it.get("resolution"),
+            "error": it.get("error"),
+            "elapsed_s": elapsed,
+            "created_at": it.get("created_at"),
+            "started_at": started,
+            "finished_at": finished,
+            "ref_count": len(it.get("extra_refs") or []) + len(it.get("ref_ids") or []),
+            "images": images,
+            "image_url": f"/api/edit/{item_id}/image" if status == "done" and images else None,
+            "image_urls": [f"/api/edit/{item_id}/image?idx={i}" if len(images) > 1 else f"/api/edit/{item_id}/image" for i in range(len(images))] if status == "done" and images else [],
+        }
+
+    meta = load_image_meta()
+    found = [fn for fn, m in meta.items() if m.get("job_id") == item_id]
+    if found:
+        return {
+            "id": item_id,
+            "status": "done",
+            "lane": "quick",
+            "priority": 0,
+            "pool_id": "",
+            "prompt": "",
+            "model": "",
+            "resolution": 0,
+            "error": None,
+            "elapsed_s": 0,
+            "created_at": None,
+            "started_at": None,
+            "finished_at": None,
+            "images": found,
+            "image_url": f"/api/edit/{item_id}/image",
+            "image_urls": [f"/api/edit/{item_id}/image?idx={i}" if len(found) > 1 else f"/api/edit/{item_id}/image" for i in range(len(found))],
+        }
+    return None
+
+
+def delete_edit_job(item_id: str) -> dict:
+    found = False
+    deleted_images = []
+    with queue_lock:
+        it = queue_items.get(item_id)
+        if it is not None:
+            found = True
+            status = it.get("status")
+            if status == "pending":
+                it["status"] = "cancelled"
+                it["finished_at"] = time.time()
+                queue_items.pop(item_id, None)
+                save_queue_locked()
+                queue_lock.notify_all()
+            elif status == "running":
+                it["status"] = "cancelled"
+                save_queue_locked()
+                queue_lock.notify_all()
+            else:
+                images = list(it.get("images") or [])
+                queue_items.pop(item_id, None)
+                save_queue_locked()
+                queue_lock.notify_all()
+                for fn in images:
+                    if delete_output_image(fn):
+                        deleted_images.append(fn)
+
+    ref_dir = QUEUE_REFS_DIR / item_id
+    if ref_dir.is_dir():
+        shutil.rmtree(ref_dir, ignore_errors=True)
+
+    meta = load_image_meta()
+    for fn, m in list(meta.items()):
+        if m.get("job_id") == item_id:
+            found = True
+            if delete_output_image(fn):
+                deleted_images.append(fn)
+
+    if not found:
+        return {"ok": False, "error": "Item não encontrado", "id": item_id}
+    return {"ok": True, "deleted": True, "id": item_id, "deleted_images": deleted_images}
 
 
 def enqueue_preset_for_all_pool(settings: dict, preset_id: str) -> dict:
@@ -2112,6 +2494,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "*")
         self.end_headers()
         self.wfile.write(body)
 
@@ -2123,8 +2508,18 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "*")
         self.end_headers()
         self.wfile.write(data)
+
+    def do_OPTIONS(self):
+        self.send_response(HTTPStatus.NO_CONTENT)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "*")
+        self.end_headers()
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -2244,11 +2639,84 @@ class Handler(BaseHTTPRequestHandler):
                 ctype = "image/webp"
             return self._file(ref_path, ctype)
 
+        if path in ("/api/edit", "/api/edit/images"):
+            qs = urllib.parse.parse_qs(parsed.query)
+            raw_ids = qs.get("ids", [""])[0]
+            if raw_ids:
+                ids = [x.strip() for x in raw_ids.split(",") if x.strip()]
+                results = [get_edit_job(i) or {"id": i, "status": "not_found"} for i in ids]
+                return self._json({"items": results})
+            return self._json({"error": "Informe ?ids=id1,id2"}, HTTPStatus.BAD_REQUEST)
+
+        if path.startswith("/api/edit/"):
+            rest = path.removeprefix("/api/edit/").strip("/")
+            parts = rest.split("/")
+            if len(parts) == 2 and parts[1] == "image":
+                item_id = parts[0]
+                job = get_edit_job(item_id)
+                if not job:
+                    return self._json({"error": "Item não encontrado", "id": item_id}, HTTPStatus.NOT_FOUND)
+                if job.get("status") != "done":
+                    return self._json(
+                        {"error": "Imagem ainda não está pronta", "id": item_id, "status": job.get("status")},
+                        HTTPStatus.CONFLICT,
+                    )
+                images = job.get("images") or []
+                if not images:
+                    return self._json({"error": "Nenhuma imagem gerada para este item", "id": item_id}, HTTPStatus.NOT_FOUND)
+                qs = urllib.parse.parse_qs(parsed.query)
+                idx = 0
+                try:
+                    idx = int(qs.get("idx", ["0"])[0])
+                except (ValueError, TypeError):
+                    idx = 0
+                if idx < 0 or idx >= len(images):
+                    idx = 0
+                fn = images[idx]
+                safe = safe_output_path(fn)
+                if safe is None or not safe.is_file():
+                    return self._json({"error": "Arquivo não encontrado no servidor", "filename": fn}, HTTPStatus.NOT_FOUND)
+                ctype = "image/png"
+                if fn.lower().endswith((".jpg", ".jpeg")):
+                    ctype = "image/jpeg"
+                elif fn.lower().endswith(".webp"):
+                    ctype = "image/webp"
+                return self._file(safe, ctype)
+            elif len(parts) == 1 and parts[0]:
+                item_id = parts[0]
+                job = get_edit_job(item_id)
+                if not job:
+                    return self._json({"error": "Item não encontrado", "id": item_id}, HTTPStatus.NOT_FOUND)
+                return self._json(job)
+
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_DELETE(self):
         try:
             parsed = urllib.parse.urlparse(self.path)
+            if parsed.path in ("/api/edit", "/api/edit/"):
+                qs = urllib.parse.parse_qs(parsed.query)
+                raw_ids = qs.get("ids", [""])[0]
+                ids = [x.strip() for x in raw_ids.split(",") if x.strip()]
+                if not ids:
+                    try:
+                        data = read_json_body(self)
+                        ids = [str(x).strip() for x in (data.get("ids") or []) if str(x).strip()]
+                    except Exception:
+                        pass
+                if not ids:
+                    return self._json({"error": "Informe ?ids=id1,id2 ou body com {'ids': [...]}"}, HTTPStatus.BAD_REQUEST)
+                results = [delete_edit_job(i) for i in ids]
+                return self._json({"ok": True, "results": results})
+
+            if parsed.path.startswith("/api/edit/"):
+                item_id = Path(parsed.path.removeprefix("/api/edit/")).name
+                if not item_id:
+                    self.send_error(HTTPStatus.NOT_FOUND)
+                    return
+                res = delete_edit_job(item_id)
+                status = HTTPStatus.OK if res.get("ok") else HTTPStatus.NOT_FOUND
+                return self._json(res, status)
             if parsed.path == "/api/queue":
                 removed = clear_finished_items()
                 return self._json({"ok": True, "removed": removed, "queue": queue_view()})
@@ -2522,6 +2990,240 @@ class Handler(BaseHTTPRequestHandler):
                     HTTPStatus.CREATED,
                 )
 
+            if parsed.path == "/api/edit":
+                ctype = self.headers.get("Content-Type", "")
+                prompt = ""
+                pool_id = ""
+                extra = []
+                ref_bytes = []
+                ref_pool_ids = None
+                settings_in = {}
+                ref_ids = None
+
+                if "multipart/form-data" in ctype:
+                    form = cgi.FieldStorage(
+                        fp=self.rfile,
+                        headers=self.headers,
+                        environ={"REQUEST_METHOD": "POST", "CONTENT_TYPE": ctype},
+                    )
+                    prompt = form_text(form, "prompt")
+                    pool_id = form_text(form, "pool_id") or form_text(form, "image_pool_id")
+                    uploads = form_file_list(form, "image") or form_file_list(form, "image1")
+                    extra = (
+                        form_file_list(form, "ref_image")
+                        or form_file_list(form, "ref_images")
+                        or form_file_list(form, "reference")
+                        or form_file_list(form, "references")
+                    )
+                    if uploads:
+                        added = add_pool_images(uploads[:1])
+                        if added:
+                            pool_id = added[0]["id"]
+                    elif extra and not pool_id:
+                        # Se não enviou imagem principal, a primeira referência se torna a imagem base!
+                        first_ref = extra.pop(0)
+                        added = add_pool_images([first_ref])
+                        if added:
+                            pool_id = added[0]["id"]
+
+                    ref_pool_raw = form_text(form, "ref_pool_ids") or form_text(form, "reference_pool_ids")
+                    if ref_pool_raw:
+                        ref_pool_ids = [x.strip() for x in ref_pool_raw.split(",") if x.strip()] or None
+                        if ref_pool_ids and not pool_id:
+                            pool_id = ref_pool_ids.pop(0)
+                    ref_raw = form_text(form, "preset_ref_ids")
+                    if ref_raw:
+                        ref_ids = [x.strip() for x in ref_raw.split(",") if x.strip()] or None
+                    settings_in = {
+                        "model": form_text(form, "model") or "qwen21_pruna",
+                        "quality": form_text(form, "quality") or "normal",
+                        "resolution": form_text(form, "resolution") or "",
+                        "steps": form_text(form, "steps") or "",
+                    }
+                else:
+                    data = read_json_body(self)
+                    prompt = str(data.get("prompt") or "").strip()
+                    img_b64 = data.get("image_base64") or data.get("image")
+                    if img_b64 and isinstance(img_b64, str) and (img_b64.startswith("data:image/") or len(img_b64) > 100):
+                        import base64
+
+                        if "," in img_b64:
+                            img_b64 = img_b64.split(",", 1)[1]
+                        try:
+                            raw_bytes = base64.b64decode(img_b64)
+                            rec = save_pool_image_bytes(raw_bytes, data.get("image_name") or "edit_upload.png")
+                            pool_id = rec["id"]
+                        except Exception as e:
+                            return self._json({"error": f"Base64 inválido: {e}"}, HTTPStatus.BAD_REQUEST)
+                    else:
+                        pool_id = str(data.get("pool_id") or data.get("image_pool_id") or "").strip()
+
+                    raw_refs = data.get("references") or data.get("references_base64") or data.get("ref_images")
+                    if isinstance(raw_refs, str):
+                        raw_refs = [raw_refs]
+                    if isinstance(raw_refs, list):
+                        import base64
+
+                        for r_b64 in raw_refs:
+                            if not isinstance(r_b64, str):
+                                continue
+                            if "," in r_b64:
+                                r_b64 = r_b64.split(",", 1)[1]
+                            try:
+                                ref_bytes.append(base64.b64decode(r_b64))
+                            except Exception:
+                                pass
+
+                    raw_ref_pools = data.get("ref_pool_ids") or data.get("reference_pool_ids")
+                    if isinstance(raw_ref_pools, list):
+                        ref_pool_ids = [str(x).strip() for x in raw_ref_pools if str(x).strip()] or None
+                    elif isinstance(raw_ref_pools, str) and raw_ref_pools.strip():
+                        ref_pool_ids = [x.strip() for x in raw_ref_pools.split(",") if x.strip()] or None
+
+                    if not pool_id:
+                        if ref_bytes:
+                            # Se não passou imagem principal, a primeira referência vira a imagem base!
+                            first_bytes = ref_bytes.pop(0)
+                            rec = save_pool_image_bytes(first_bytes, "edit_main_from_ref.png")
+                            pool_id = rec["id"]
+                        elif ref_pool_ids:
+                            pool_id = ref_pool_ids.pop(0)
+
+                    ref_raw = data.get("preset_ref_ids")
+                    if isinstance(ref_raw, list):
+                        ref_ids = [str(x).strip() for x in ref_raw if str(x).strip()] or None
+                    elif isinstance(ref_raw, str) and ref_raw.strip():
+                        ref_ids = [x.strip() for x in ref_raw.split(",") if x.strip()] or None
+                    settings_in = {
+                        "model": data.get("model") or "qwen21_pruna",
+                        "quality": data.get("quality") or "normal",
+                        "resolution": data.get("resolution") or "",
+                        "steps": data.get("steps") or "",
+                    }
+
+                if not prompt:
+                    return self._json({"error": "Prompt obrigatório (campo 'prompt')"}, HTTPStatus.BAD_REQUEST)
+
+                settings = resolve_generation_settings(settings_in)
+                if not model_available(settings["model"]):
+                    return self._json(
+                        {"error": "Modelo indisponível no momento"},
+                        HTTPStatus.SERVICE_UNAVAILABLE,
+                    )
+
+                is_text_to_image = False
+                if not pool_id:
+                    # Geração a partir do texto puro: NUNCA usa imagens da fila ou pool!
+                    # Cria um canvas neutro e aciona geração pura via EmptyLatentImage.
+                    res_val = int(settings.get("resolution") or 1024)
+                    pool_id = get_or_create_blank_canvas_pool_id(res_val)
+                    is_text_to_image = True
+
+                try:
+                    item = create_quick_item(
+                        pool_id=pool_id,
+                        prompt_text=prompt,
+                        preset_id=None,
+                        preset_label="API Edit" if not is_text_to_image else "API Text2Img",
+                        settings=settings,
+                        ref_ids=ref_ids,
+                        extra_uploads=extra,
+                        extra_ref_bytes=ref_bytes if ref_bytes else None,
+                        extra_ref_pool_ids=ref_pool_ids,
+                        is_text_to_image=is_text_to_image,
+                    )
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
+                return self._json(
+                    {
+                        "ok": True,
+                        "id": item["id"],
+                        "status": item["status"],
+                        "lane": item.get("lane"),
+                        "priority": queue_item_priority(item),
+                        "mode": "text_to_image" if is_text_to_image else "image_edit",
+                        "references_count": len(item.get("extra_refs") or []) + len(item.get("ref_ids") or []),
+                        "image_url": f"/api/edit/{item['id']}/image",
+                        "status_url": f"/api/edit/{item['id']}",
+                        "message": "Item enfileirado com sucesso como próximo da fila",
+                    },
+                    HTTPStatus.CREATED,
+                )
+
+            if parsed.path == "/api/worker/lease":
+                data = read_json_body(self)
+                worker_id = str(data.get("worker_id") or "satellite_worker").strip()
+                try:
+                    count = min(100, max(1, int(data.get("count") or 20)))
+                except (TypeError, ValueError):
+                    count = 20
+                items = worker_lease_items(worker_id, count)
+                return self._json({"ok": True, "worker_id": worker_id, "count": len(items), "items": items})
+
+            if parsed.path == "/api/worker/complete":
+                ctype_wc = self.headers.get("Content-Type", "")
+                if "multipart/form-data" in ctype_wc:
+                    form = cgi.FieldStorage(
+                        fp=self.rfile,
+                        headers=self.headers,
+                        environ={"REQUEST_METHOD": "POST", "CONTENT_TYPE": ctype_wc},
+                    )
+                    item_id = form_text(form, "item_id")
+                    if not item_id:
+                        return self._json({"error": "item_id obrigatório"}, HTTPStatus.BAD_REQUEST)
+                    image_field = form["image"] if "image" in form else None
+                    if not field_has_upload(image_field):
+                        return self._json({"error": "image obrigatória"}, HTTPStatus.BAD_REQUEST)
+                    orig_name = Path(image_field.filename or f"qwen_worker_{item_id}.png").name
+                    fn = form_text(form, "filename") or orig_name
+                    dest = COMFY_OUTPUT / fn
+                    with dest.open("wb") as f:
+                        shutil.copyfileobj(image_field.file, f)
+                    try:
+                        finished_at = float(form_text(form, "finished_at") or time.time())
+                    except (ValueError, TypeError):
+                        finished_at = time.time()
+                    ok = worker_complete_item(item_id, fn, finished_at)
+                    return self._json({"ok": ok, "id": item_id, "filename": fn})
+                else:
+                    return self._json({"error": "Envie multipart/form-data com o arquivo da imagem"}, HTTPStatus.BAD_REQUEST)
+
+            if parsed.path == "/api/worker/fail":
+                data = read_json_body(self)
+                item_id = str(data.get("item_id") or "").strip()
+                error = str(data.get("error") or "")
+                ok = worker_fail_item(item_id, error)
+                return self._json({"ok": ok, "id": item_id})
+
+            if parsed.path == "/api/queue/prioritize":
+                data = read_json_body(self)
+                prefixes = [str(x).strip().lower() for x in (data.get("prefixes") or []) if str(x).strip()]
+                try:
+                    prio = int(data.get("priority") or 1)
+                except (TypeError, ValueError):
+                    prio = 1
+                clear = bool(data.get("clear"))
+                pool_map = {r["id"]: r for r in load_pool()}
+                updated = 0
+                with queue_lock:
+                    for it in queue_items.values():
+                        if it.get("status") != "pending":
+                            continue
+                        rec = pool_map.get(it.get("pool_id") or "") or {}
+                        name = (rec.get("original_name") or "").lower()
+                        if not prefixes or any(p in name for p in prefixes):
+                            if clear:
+                                it.pop("priority", None)
+                            else:
+                                it["priority"] = prio
+                            updated += 1
+                    save_queue_locked()
+                    queue_lock.notify_all()
+                return self._json(
+                    {"ok": True, "updated": updated, "priority": None if clear else prio, "queue": queue_view()}
+                )
+
             if parsed.path in ("/api/queue/pause", "/api/queue/resume", "/api/queue/cancel"):
                 global queue_paused
                 with queue_lock:
@@ -2693,6 +3395,7 @@ def main():
     COMFY_OUTPUT.mkdir(parents=True, exist_ok=True)
     PRESET_REFS_DIR.mkdir(parents=True, exist_ok=True)
     POOL_DIR.mkdir(parents=True, exist_ok=True)
+    RESIZED_DIR.mkdir(parents=True, exist_ok=True)
     with prompts_lock:
         ensure_prompt_timestamps(ensure_prompt_ids(load_raw_prompts()))
     recover_queue_on_boot()

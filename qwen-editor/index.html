@@ -1787,7 +1787,7 @@
       await pollQueue();
     });
     queueCancelBtn.addEventListener('click', async () => {
-      if (!confirm('Cancelar todos os itens pendentes da fila? O que já está rodando termina.')) return;
+      if (!confirm('Cancelar todos os itens pendentes da fila? Os itens já submetidos ao ComfyUI (até 2) terminam normalmente.')) return;
       await fetch('/api/queue/cancel', { method: 'POST' });
       await pollQueue();
     });

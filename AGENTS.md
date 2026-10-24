@@ -19,11 +19,18 @@ Como o projeto funciona e como operamos ele (histórico da implementação de ou
 
 - **Worker único** (thread daemon) pega 1 item `pending` por vez, monta o workflow, manda pro
   ComfyUI (`POST /prompt`), espera (`/history/{id}`) e grava meta. ComfyUI só executa 1 por vez.
+- **Prefetch**: o worker submete o próximo item enquanto o atual ainda roda (máx. 2 em voo) —
+  elimina a folga poll+build+POST entre execuções. Pausa/cancel só valem para itens ainda não
+  submetidos; os 2 em voo terminam (mensagem do botão de cancelar reflete isso).
+- **Cache de resize**: `staging/resized/<pool_id>_<resolução>.png` — a mesma foto do pool é
+  redimensionada uma vez por resolução; os demais ~300 itens do mesmo preset só copiam.
+  Com essas 2 otimizações a cadência caiu de ~48,5s para ~37,5s por imagem (-23%).
 - **Lane `quick`**: itens "Gerar imagem" priorizam sobre os `batch` (rodam depois do item em
   curso, nunca interrompem o running).
 - **Persistência/restart**: `queue.json` + `recover_queue_on_boot()` reconcilia itens `running`
   com o histórico do ComfyUI (completou → `done`; sumiu → volta `pending` e resubmete). O
   navegador pode fechar; a fila é 100% do servidor. Pausa **não** persiste (boot volta rodando).
+  Boot com fila grande (130k itens) demora alguns segundos (parse do JSON) antes de servir.
 - **Retry**: 1 tentativa extra em erro, depois `error` e segue.
 - **Salvou o prompt, gerou tudo**: `POST/PUT /api/prompts` enfileira o preset × todas as imagens
   do pool em modo append (entra no fim da fila ativa). Pool > 500 imagens: pula com aviso.
@@ -38,6 +45,10 @@ Como o projeto funciona e como operamos ele (histórico da implementação de ou
 - `GET /api/pool` · `POST /api/pool` (multipart `images`) · `GET /api/pool/{id}/thumb|file` · `DELETE /api/pool/{id}` (bloqueado se em fila ativa)
 - `POST /api/batch` — `pool_ids` (ordenados = prioridade) + `preset_start_id`/`preset_end_id` + settings + `force`
 - `POST /api/quick` — item prioritário (prompt do textarea + 1ª imagem do pool + refs)
+- `POST /api/edit` — edição de imagem com prioridade máxima (próximo da fila). Aceita `multipart/form-data` (campos `prompt`, `image`/`pool_id`, e refs em `ref_image`/`references`/`ref_pool_ids`) ou `application/json` (`prompt`, `image_base64`/`pool_id`, e refs em `references`/`ref_pool_ids`). Retorna `id`, `status: pending`, `image_url` e `status_url`.
+- `GET /api/edit/{id}` — polling de status do item (`pending`, `running`, `done`, `error`), tempo decorrido e URLs de resultado. Suporta também `GET /api/edit?ids=id1,id2`.
+- `GET /api/edit/{id}/image` — download direto do binário da imagem gerada (`image/png`). Suporta `?idx=N` se houver múltiplas.
+- `DELETE /api/edit/{id}` — cancela se pendente, ou exclui arquivo físico gerado + metadados e registro da fila. Suporta lote via `?ids=id1,id2` ou body `{"ids": [...]}`.
 - `GET /api/queue` · `POST /api/queue/pause|resume|cancel` · `DELETE /api/queue` (limpa done/error/cancelled; não mexe no pool)
 - `POST /api/regenerate-stale` e `/api/generate` continuam no caminho antigo (`run_job`, fora da fila persistente)
 - Galeria: `GET /api/gallery`, `DELETE /api/images` (apaga todos os `qwen_web_*.png` **e** zera o meta)

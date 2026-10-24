@@ -1,17 +1,65 @@
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
 
 # Logs
 *.log
+*.log.*
+*.out
 
-# Runtime data
+# OS & Editor
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.vscode/
+.idea/
+
+# Images, Video & Media Files
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.bmp
+*.tiff
+*.svg
+*.mp4
+*.mov
+*.avi
+*.mkv
+imgs/
+qwen-editor/preset_refs/
+qwen-editor/staging/
+satellite-worker/pool/
+satellite-worker/outbox/
+satellite-worker/resized/
+satellite-worker/preset_refs/
+
+# Prompts & Runtime Metadata
+*prompts*.json
+qwen-editor/prompts.json
 qwen-editor/image_meta.json
 qwen-editor/queue.json
-qwen-editor/staging/
+*queue*.json
+local_queue.json
+satellite-worker/local_queue.json
 
-# Downloads / backups locais
-imgs/
-
-# OS
-.DS_Store
+# Large AI Model Weights
+*.safetensors
+*.gguf
+*.bin
+*.pt
+*.pth
+*.ckpt
