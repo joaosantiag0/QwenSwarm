@@ -686,6 +686,44 @@ def tts_synthesize(text: str, voice: str = "pf_dora", speed: float = 1.0) -> byt
         return resp.read()
 
 
+# --- Transcription Engine (Whisper.cpp) ---
+WHISPER_BIN = Path("/home/user/videoforge/whisper.cpp/build/bin/whisper-cli")
+WHISPER_MODEL = Path("/home/user/videoforge/whisper.cpp/models/ggml-small.bin")
+
+
+def whisper_transcribe(audio_path: Path, lang: str = "auto") -> dict:
+    if not WHISPER_BIN.is_file() or not WHISPER_MODEL.is_file():
+        raise FileNotFoundError("Binário ou modelo do Whisper não encontrado")
+
+    out_prefix = f"/tmp/whisper_out_{uuid.uuid4().hex[:8]}"
+    cmd = [
+        str(WHISPER_BIN),
+        "-m", str(WHISPER_MODEL),
+        "-l", lang or "auto",
+        "-oj",
+        "-of", out_prefix,
+        "-f", str(audio_path),
+    ]
+    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=120)
+    json_path = Path(out_prefix + ".json")
+    if not json_path.is_file():
+        raise RuntimeError(f"Whisper falhou: {res.stderr[:500]}")
+
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    json_path.unlink(missing_ok=True)
+
+    transcriptions = data.get("transcription", [])
+    full_text = " ".join(t.get("text", "").strip() for t in transcriptions)
+    detected_lang = data.get("result", {}).get("language", lang)
+
+    return {
+        "ok": True,
+        "text": full_text.strip(),
+        "language": detected_lang,
+        "segments": transcriptions,
+    }
+
+
 def field_has_upload(field) -> bool:
     if field is None:
         return False
@@ -3069,6 +3107,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/tts/voices":
             return self._json({"voices": KOKORO_VOICES})
 
+        if path == "/api/transcribe/status":
+            return self._json({
+                "ready": WHISPER_BIN.is_file() and WHISPER_MODEL.is_file(),
+                "model": "ggml-small.bin",
+                "languages": ["auto", "pt", "en", "es", "fr", "de", "it", "ja", "zh"],
+            })
+
         if path == "/api/gallery":
             qs = urllib.parse.parse_qs(parsed.query)
             all_images = qs.get("all", ["0"])[0] in ("1", "true", "yes")
@@ -3251,6 +3296,17 @@ class Handler(BaseHTTPRequestHandler):
                 res = delete_edit_job(item_id)
                 status = HTTPStatus.OK if res.get("ok") else HTTPStatus.NOT_FOUND
                 return self._json(res, status)
+            if parsed.path.startswith("/api/video/file/"):
+                fname = Path(parsed.path.removeprefix("/api/video/file/")).name
+                fpath = (COMFY_OUTPUT / fname).resolve()
+                if fpath.parent != COMFY_OUTPUT.resolve() or not fpath.is_file():
+                    return self._json({"error": "Vídeo não encontrado"}, HTTPStatus.NOT_FOUND)
+                try:
+                    fpath.unlink()
+                    return self._json({"ok": True, "deleted": fname})
+                except Exception as e:
+                    return self._json({"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+
             if parsed.path == "/api/queue":
                 removed = clear_finished_items()
                 return self._json({"ok": True, "removed": removed, "queue": queue_view()})
@@ -3473,6 +3529,43 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 except Exception as e:
                     return self._json({"error": f"Erro síntese TTS: {e}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
+
+            if parsed.path == "/api/transcribe":
+                ctype = self.headers.get("Content-Type", "")
+                temp_in = Path(f"/tmp/whisper_in_{uuid.uuid4().hex[:8]}.wav")
+                lang = "auto"
+                if "multipart/form-data" in ctype:
+                    form = cgi.FieldStorage(
+                        fp=self.rfile,
+                        headers=self.headers,
+                        environ={"REQUEST_METHOD": "POST", "CONTENT_TYPE": ctype},
+                    )
+                    lang = form_text(form, "lang") or "auto"
+                    upload = None
+                    if "audio" in form:
+                        upload = form["audio"]
+                    elif "file" in form:
+                        upload = form["file"]
+                    if not field_has_upload(upload):
+                        return self._json({"error": "Envie o arquivo de áudio no campo 'audio' ou 'file'"}, HTTPStatus.BAD_REQUEST)
+                    with open(temp_in, "wb") as f_out:
+                        shutil.copyfileobj(upload.file, f_out)
+                else:
+                    data = read_json_body(self)
+                    import base64
+                    b64 = str(data.get("audio_base64") or "")
+                    lang = str(data.get("lang") or "auto")
+                    if not b64:
+                        return self._json({"error": "Envie multipart/form-data ou JSON com 'audio_base64'"}, HTTPStatus.BAD_REQUEST)
+                    temp_in.write_bytes(base64.b64decode(b64))
+
+                try:
+                    result = whisper_transcribe(temp_in, lang=lang)
+                    return self._json(result)
+                except Exception as e:
+                    return self._json({"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+                finally:
+                    temp_in.unlink(missing_ok=True)
 
             if parsed.path == "/api/prompts":
                 data = read_json_body(self)
