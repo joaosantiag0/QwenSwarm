@@ -40,6 +40,24 @@ How QwenSwarm works and how we operate it (implementation history as of October 
   - As soon as the Master comes back online, the worker automatically flushes the outbox via `POST /api/worker/complete` and requests the next block of tasks.
 - **Low-VRAM Hardware Optimization**: For constrained GPUs (e.g. RTX 3060 6GB Laptop), ComfyUI runs with `--lowvram --vram-headroom 1.2 --reserve-vram 0.8`. UNet weights fit within ~3.9GB VRAM while remaining weights and CLIP dynamically offload to system RAM without OOM errors.
 
+## Unified AI Suite & GPU Arbiter (Auto-Pause / Resume)
+
+- **Single Hub / Multi-Studio Dashboard**: Integrated into `qwen-editor` (port **3000**), providing access to:
+  - 🎨 **Image Studio** (Qwen 2.1 Image Edit & Batch Queue)
+  - 🎬 **Video Studio** (MiniMax H3 / FastVideo Trim 8-step Text-to-Video and Image-to-Video with audio)
+  - 💬 **LLM Studio** (Qwen 3.8 27B Uncensored via `llama.cpp` with FastMTP speculative decoding)
+  - 🎙️ **Voice Studio** (Kokoro-82M TTS neural voice synthesis in <1s per clip)
+- **Automatic GPU Arbitration**: The Master GPU (RTX 3060 12GB) cannot run two heavy generative models concurrently without OOM. The `GPUArbiter` coordinates access:
+  - When a user triggers **Video generation** or **LLM Chat**:
+    1. Signals the background Qwen image queue to **pause** (`queue_paused = True`).
+    2. Waits for any currently rendering image to finish cleanly (<35s) so no compute is wasted.
+    3. Calls ComfyUI `POST /free` to purge VRAM cache if switching to LLM (`llama.cpp`) or swapping models.
+    4. Executes the requested task on the GPU.
+  - When the task completes (or LLM reaches a 4-minute idle timeout / user clicks "Liberar GPU"):
+    1. Shuts down `llama-server` / frees video workflow.
+    2. Resumes the Qwen Image queue automatically (`queue_paused = False`).
+- **Satellite Node Immunity**: Pausing the Master GPU for Video/LLM does **not** stop satellite nodes (`predator-3060`); they continue pulling leases and rendering on their own laptop GPU in parallel.
+
 ## Key API Endpoints
 
 - `GET /api/pool` · `POST /api/pool` (multipart `images`) · `GET /api/pool/{id}/thumb|file` · `DELETE /api/pool/{id}` (blocked if referenced in an active queue)
