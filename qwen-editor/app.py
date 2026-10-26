@@ -11,6 +11,7 @@ import math
 import random
 import re
 import shutil
+import subprocess
 import threading
 import time
 import uuid
@@ -191,6 +192,498 @@ queue_items: dict[str, dict] = {}
 queue_current_batch = ""
 queue_paused = False
 _worker_thread: threading.Thread | None = None
+
+
+# --- GPU Arbiter & Cluster Orchestrator ---
+class GPUArbiter:
+    MODE_QWEN = "qwen"
+    MODE_VIDEO = "video"
+    MODE_LLM = "llm"
+    MODE_VOICE = "voice"
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.active_mode = "qwen"
+        self.task_description = "Fila de Imagens ativa"
+        self.active_since = time.time()
+        self.was_manually_paused = False
+
+        # LLM Subprocess tracking
+        self.llm_proc: subprocess.Popen | None = None
+        self.llm_port = 8085
+        self.llm_last_activity = 0.0
+        self.llm_idle_timeout = 240.0  # 4 minutes auto-release
+        self.llm_thread: threading.Thread | None = None
+        self.video_active = False
+
+    def get_status(self) -> dict:
+        vram_mb, total_mb, util_pct, temp_c = self._get_nvidia_stats()
+        return {
+            "mode": self.active_mode,
+            "description": self.task_description,
+            "since": self.active_since,
+            "queue_paused": queue_paused,
+            "vram_used_mb": vram_mb,
+            "vram_total_mb": total_mb,
+            "gpu_util_pct": util_pct,
+            "temperature_c": temp_c,
+            "llm_running": self.llm_proc is not None and self.llm_proc.poll() is None,
+            "video_active": self.video_active,
+        }
+
+    def _get_nvidia_stats(self) -> tuple[int, int, int, int]:
+        try:
+            out = subprocess.check_output(
+                ["nvidia-smi", "--query-gpu=memory.used,memory.total,utilization.gpu,temperature.gpu", "--format=csv,noheader,nounits"],
+                text=True,
+                timeout=2,
+            ).strip()
+            parts = [int(p.strip()) for p in out.split(",")]
+            return parts[0], parts[1], parts[2], parts[3]
+        except Exception:
+            return 0, 0, 0, 0
+
+    def pause_qwen_and_wait_idle(self, timeout_s: float = 60.0) -> bool:
+        global queue_paused
+        with queue_lock:
+            self.was_manually_paused = queue_paused
+            queue_paused = True
+            queue_lock.notify_all()
+
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            try:
+                with urllib.request.urlopen(f"{COMFY_API}/queue", timeout=3) as resp:
+                    qdata = json.loads(resp.read())
+                    running = qdata.get("queue_running", [])
+                    pending = qdata.get("queue_pending", [])
+                    if len(running) == 0 and len(pending) == 0:
+                        break
+            except Exception:
+                pass
+            time.sleep(1.0)
+        return True
+
+    def free_comfyui_vram(self):
+        try:
+            payload = json.dumps({"unload_models": True, "free_memory": True}).encode()
+            req = urllib.request.Request(
+                f"{COMFY_API}/free",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                resp.read()
+        except Exception as e:
+            print(f"[GPUArbiter] ComfyUI free error: {e}")
+
+    def acquire_for_task(self, mode: str, description: str, timeout_s: float = 60.0) -> bool:
+        with self.lock:
+            if self.active_mode == mode and mode == "llm" and self.llm_proc and self.llm_proc.poll() is None:
+                self.llm_last_activity = time.time()
+                return True
+
+            if self.active_mode == "llm" and mode != "llm":
+                self._stop_llm()
+
+            self.pause_qwen_and_wait_idle(timeout_s=timeout_s)
+
+            if mode in ("llm", "video"):
+                self.free_comfyui_vram()
+
+            self.active_mode = mode
+            self.task_description = description
+            self.active_since = time.time()
+            if mode == "video":
+                self.video_active = True
+            return True
+
+    def release_from_task(self, mode: str):
+        global queue_paused
+        with self.lock:
+            if mode == "llm":
+                self._stop_llm()
+            elif mode == "video":
+                self.video_active = False
+                self.free_comfyui_vram()
+
+            self.active_mode = "qwen"
+            self.task_description = "Fila de Imagens ativa"
+            self.active_since = time.time()
+
+            if not self.was_manually_paused:
+                with queue_lock:
+                    queue_paused = False
+                    queue_lock.notify_all()
+
+    def start_llm_if_needed(self) -> bool:
+        with self.lock:
+            if self.llm_proc and self.llm_proc.poll() is None:
+                self.llm_last_activity = time.time()
+                return True
+
+            self.acquire_for_task("llm", "Qwen 27B Chat ativo")
+
+            llm_bin = Path("/home/user/llm-hauhau/llama.cpp/build/bin/llama-server")
+            llm_model = Path("/home/user/llm-hauhau/models/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-IQ2_M.gguf")
+            if not llm_bin.is_file() or not llm_model.is_file():
+                raise FileNotFoundError("Binário ou modelo do llama.cpp não encontrado em ~/llm-hauhau")
+
+            cmd = [
+                str(llm_bin),
+                "-m", str(llm_model),
+                "--port", str(self.llm_port),
+                "--host", "127.0.0.1",
+                "-c", "2048",
+                "-b", "512",
+                "-ub", "256",
+                "--flash-attn", "on",
+                "-ngl", "99",
+                "--fit", "on",
+                "--fit-target", "700",
+            ]
+
+            self.llm_proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self.llm_last_activity = time.time()
+
+            deadline = time.time() + 30.0
+            while time.time() < deadline:
+                try:
+                    with urllib.request.urlopen(f"http://127.0.0.1:{self.llm_port}/health", timeout=2) as resp:
+                        if resp.status == 200:
+                            break
+                except Exception:
+                    pass
+                time.sleep(0.5)
+
+            if self.llm_thread is None or not self.llm_thread.is_alive():
+                self.llm_thread = threading.Thread(target=self._llm_idle_monitor, daemon=True)
+                self.llm_thread.start()
+            return True
+
+    def _stop_llm(self):
+        if self.llm_proc:
+            try:
+                self.llm_proc.terminate()
+                self.llm_proc.wait(timeout=5)
+            except Exception:
+                try:
+                    self.llm_proc.kill()
+                except Exception:
+                    pass
+            self.llm_proc = None
+
+    def _llm_idle_monitor(self):
+        while True:
+            time.sleep(5)
+            with self.lock:
+                if self.active_mode == "llm" and self.llm_proc and self.llm_proc.poll() is None:
+                    if time.time() - self.llm_last_activity > self.llm_idle_timeout:
+                        print("[GPUArbiter] LLM idle timeout atingido. Liberando GPU para imagens...")
+                        self.release_from_task("llm")
+
+gpu_arbiter = GPUArbiter()
+
+
+# --- Video Engine (MiniMax H3 / FastVideo FastH3 Trim) ---
+VIDEO_WORKFLOWS_DIR = WEB_ROOT / "workflows"
+VIDEO_PREFIXES = ("h3_trim_video", "h3_web_video", "h3_kijai_video")
+
+VIDEO_MODEL_FILES = {
+    "unet": "diffusion_models/fastvideo_fasth3_8step_v2_pruned_int8_convrot.safetensors",
+    "clip": "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "vae_video": "vae/minimax_h3_video_vae_int8_convrot.safetensors",
+    "vae_audio": "vae/minimax_h3_audio_vae_fp32.safetensors",
+}
+
+VIDEO_MODEL_FILES_I2V = {
+    "unet": "diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    "clip": "text_encoders/qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+    "vae_video": "vae/minimax_h3_video_vae_fp16.safetensors",
+    "vae_audio": "vae/minimax_h3_audio_vae_fp32.safetensors",
+    "lora": "loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+}
+
+VIDEO_SIZE_PRESETS = {
+    "preview": {"label": "16:9 preview (864×480)", "width": 864, "height": 480},
+    "native": {"label": "16:9 nativo (1344×768)", "width": 1344, "height": 768},
+    "square": {"label": "1:1 (768×768)", "width": 768, "height": 768},
+}
+
+VIDEO_MODES = {
+    "t2v": {
+        "label": "FastH3 Trim — texto → vídeo + áudio (8 passos)",
+        "workflow": "H3_T2V_API.json",
+        "needs_image": False,
+    },
+    "i2v": {
+        "label": "MiniMax H3 — imagem → vídeo + áudio (8 passos)",
+        "workflow": "H3_I2V_API.json",
+        "needs_image": True,
+    },
+}
+
+video_jobs: dict[str, dict] = {}
+video_jobs_lock = threading.Lock()
+
+
+def video_model_path(rel: str) -> Path:
+    return COMFY_MODELS / rel
+
+
+def video_assets_status() -> dict:
+    miss_t2v = [rel for rel in VIDEO_MODEL_FILES.values() if not video_model_path(rel).is_file()]
+    miss_i2v = [rel for rel in VIDEO_MODEL_FILES_I2V.values() if not video_model_path(rel).is_file()]
+    return {
+        "t2v_ready": not miss_t2v,
+        "i2v_ready": not miss_i2v,
+        "missing_t2v": miss_t2v,
+        "missing_i2v": miss_i2v,
+    }
+
+
+def length_from_seconds(seconds: float) -> int:
+    n = max(5, round(seconds * 24))
+    return n + (5 - (n % 17)) % 17
+
+
+def patch_video_workflow(
+    template: dict,
+    prompt: str,
+    seed: int,
+    width: int,
+    height: int,
+    length: int,
+    image_name: str | None,
+    model_files: dict,
+    video_prefix: str,
+) -> dict:
+    import copy
+    graph = copy.deepcopy(template)
+    clip_name = Path(model_files["clip"]).name
+    unet_name = Path(model_files["unet"]).name
+    vae_v = Path(model_files["vae_video"]).name
+    vae_a = Path(model_files["vae_audio"]).name
+    lora_name = Path(model_files["lora"]).name if "lora" in model_files else None
+
+    for node in graph.values():
+        ct = node.get("class_type")
+        inputs = node.get("inputs") or {}
+        if ct == "UNETLoader":
+            inputs["unet_name"] = unet_name
+        elif ct == "CLIPLoader":
+            inputs["clip_name"] = clip_name
+        elif ct == "VAELoader":
+            if inputs.get("vae_name", "").startswith("minimax_h3_audio"):
+                inputs["vae_name"] = vae_a
+            else:
+                inputs["vae_name"] = vae_v
+        elif ct == "LoraLoaderModelOnly" and lora_name:
+            inputs["lora_name"] = lora_name
+        elif ct == "BlockSparseAttention":
+            sel = inputs.get("selection")
+            if isinstance(sel, list):
+                mode = sel[0] if sel else "vsa"
+                inputs["selection"] = mode
+                extra = sel[1] if len(sel) > 1 else {}
+                if isinstance(extra, dict):
+                    for k, v in extra.items():
+                        inputs[f"selection.{k}"] = v
+            if inputs.get("selection") == "vsa" and "selection.keep_percent" not in inputs:
+                inputs["selection.keep_percent"] = 10.0
+        elif ct == "MiniMaxH3ImageToVideo":
+            inputs["prompt"] = prompt
+            inputs["width"] = width
+            inputs["height"] = height
+            inputs["length"] = length
+        elif ct == "RandomNoise":
+            inputs["noise_seed"] = seed
+        elif ct == "SaveVideo":
+            inputs["filename_prefix"] = video_prefix
+        elif ct == "LoadImage" and image_name:
+            inputs["image"] = image_name
+        node["inputs"] = inputs
+    return graph
+
+
+def comfy_post_video_prompt(api_prompt: dict) -> str:
+    payload = json.dumps({"prompt": api_prompt, "client_id": str(uuid.uuid4())}).encode()
+    req = urllib.request.Request(
+        f"{COMFY_API}/prompt",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        result = json.loads(resp.read())
+    prompt_id = result.get("prompt_id")
+    if not prompt_id:
+        raise RuntimeError(f"ComfyUI: {result}")
+    if result.get("node_errors"):
+        raise RuntimeError(json.dumps(result["node_errors"], ensure_ascii=False)[:2500])
+    return prompt_id
+
+
+def comfy_wait_video(prompt_id: str, timeout_s: int = 3600) -> list[dict]:
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(f"{COMFY_API}/history/{prompt_id}", timeout=30) as resp:
+                hist = json.loads(resp.read())
+        except Exception:
+            time.sleep(3)
+            continue
+        if prompt_id not in hist:
+            time.sleep(3)
+            continue
+        entry = hist[prompt_id]
+        status = entry.get("status", {})
+        if not status.get("completed"):
+            time.sleep(3)
+            continue
+        for msg in status.get("messages", []):
+            if msg[0] == "execution_error":
+                detail = msg[1] if len(msg) > 1 else {}
+                raise RuntimeError(detail.get("exception_message", str(detail)))
+
+        found = []
+        for node_out in entry.get("outputs", {}).values():
+            for key in ("videos", "gifs", "images"):
+                for item in node_out.get(key, []) or []:
+                    if isinstance(item, dict) and item.get("filename"):
+                        found.append(item)
+        if found:
+            return found
+        raise RuntimeError("ComfyUI terminou sem arquivo de vídeo na saída")
+    raise TimeoutError("Timeout aguardando renderização de vídeo")
+
+
+def run_video_job(job_id: str, mode: str, prompt: str, seed: int, width: int, height: int, length: int, image_name: str | None):
+    def worker():
+        try:
+            with video_jobs_lock:
+                video_jobs[job_id]["status"] = "waiting_gpu"
+
+            gpu_arbiter.acquire_for_task("video", f"Vídeo H3: {prompt[:35]}...")
+
+            with video_jobs_lock:
+                video_jobs[job_id]["status"] = "running"
+                video_jobs[job_id]["started_at"] = time.time()
+
+            wf_file = VIDEO_MODES[mode]["workflow"]
+            wf_path = VIDEO_WORKFLOWS_DIR / wf_file
+            if not wf_path.is_file():
+                raise FileNotFoundError(f"Workflow {wf_file} não encontrado")
+
+            template = json.loads(wf_path.read_text(encoding="utf-8"))
+            model_files = VIDEO_MODEL_FILES_I2V if mode == "i2v" else VIDEO_MODEL_FILES
+            vprefix = "h3_trim_video" if mode == "t2v" else "h3_web_video"
+
+            api_prompt = patch_video_workflow(
+                template,
+                prompt,
+                seed,
+                width,
+                height,
+                length,
+                image_name,
+                model_files,
+                vprefix,
+            )
+
+            prompt_id = comfy_post_video_prompt(api_prompt)
+            with video_jobs_lock:
+                video_jobs[job_id]["prompt_id"] = prompt_id
+
+            files = comfy_wait_video(prompt_id)
+
+            with video_jobs_lock:
+                video_jobs[job_id]["status"] = "done"
+                video_jobs[job_id]["finished_at"] = time.time()
+                video_jobs[job_id]["files"] = files
+                video_jobs[job_id]["video_url"] = f"/api/video/file/{files[0]['filename']}" if files else None
+        except Exception as e:
+            with video_jobs_lock:
+                video_jobs[job_id]["status"] = "error"
+                video_jobs[job_id]["error"] = str(e)
+                video_jobs[job_id]["finished_at"] = time.time()
+        finally:
+            gpu_arbiter.release_from_task("video")
+
+    t = threading.Thread(target=worker, name=f"video-job-{job_id}", daemon=True)
+    t.start()
+
+
+def list_video_gallery(limit: int = 30) -> list[dict]:
+    items = []
+    if not COMFY_OUTPUT.is_dir():
+        return []
+    for p in COMFY_OUTPUT.iterdir():
+        if p.is_file() and p.name.startswith(VIDEO_PREFIXES) and p.suffix.lower() in (".mp4", ".webm", ".gif"):
+            st = p.stat()
+            items.append({
+                "filename": p.name,
+                "url": f"/api/video/file/{p.name}",
+                "size_mb": round(st.st_size / (1024 * 1024), 2),
+                "mtime": st.st_mtime,
+                "created_at": iso_local(st.st_mtime),
+            })
+    items.sort(key=lambda x: x["mtime"], reverse=True)
+    return items[:limit]
+
+
+# --- LLM Engine (Qwen 3.8 27B Uncensored via llama.cpp) ---
+def llm_chat(messages: list[dict], system_prompt: str = "", temperature: float = 0.7, max_tokens: int = 1024) -> dict:
+    gpu_arbiter.start_llm_if_needed()
+
+    formatted_messages = []
+    if system_prompt:
+        formatted_messages.append({"role": "system", "content": system_prompt})
+    formatted_messages.extend(messages)
+
+    payload = json.dumps({
+        "messages": formatted_messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{gpu_arbiter.llm_port}/v1/chat/completions",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        result = json.loads(resp.read().decode("utf-8"))
+
+    gpu_arbiter.llm_last_activity = time.time()
+    return result
+
+
+# --- Voice Engine (Kokoro TTS sidecar) ---
+KOKORO_API = "http://127.0.0.1:8880"
+KOKORO_VOICES = [
+    {"id": "pf_dora", "name": "Dora (Português - Feminina)", "lang": "pt-br"},
+    {"id": "pm_alex", "name": "Alex (Português - Masculina)", "lang": "pt-br"},
+    {"id": "pm_santa", "name": "Santa (Português - Grave)", "lang": "pt-br"},
+    {"id": "af_heart", "name": "Heart (Inglês - Feminina Suave)", "lang": "en-us"},
+    {"id": "af_bella", "name": "Bella (Inglês - Feminina)", "lang": "en-us"},
+    {"id": "am_adam", "name": "Adam (Inglês - Masculina)", "lang": "en-us"},
+    {"id": "am_michael", "name": "Michael (Inglês - Narrador)", "lang": "en-us"},
+]
+
+
+def tts_synthesize(text: str, voice: str = "pf_dora", speed: float = 1.0) -> bytes:
+    payload = json.dumps({"text": text, "voice": voice, "speed": speed}).encode("utf-8")
+    req = urllib.request.Request(
+        f"{KOKORO_API}/tts",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return resp.read()
 
 
 def field_has_upload(field) -> bool:
@@ -2535,6 +3028,47 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        # --- Unified AI Suite Endpoints (GPU, Video, LLM, TTS) ---
+        if path == "/api/system/gpu":
+            return self._json(gpu_arbiter.get_status())
+
+        if path == "/api/video/status":
+            return self._json(video_assets_status())
+
+        if path == "/api/video/jobs":
+            with video_jobs_lock:
+                return self._json({"jobs": list(video_jobs.values())})
+
+        if path.startswith("/api/video/job/"):
+            jid = path.removeprefix("/api/video/job/").strip("/")
+            with video_jobs_lock:
+                job = video_jobs.get(jid)
+            if not job:
+                return self._json({"error": "Job não encontrado"}, HTTPStatus.NOT_FOUND)
+            return self._json(job)
+
+        if path == "/api/video/gallery":
+            return self._json({"videos": list_video_gallery()})
+
+        if path.startswith("/api/video/file/"):
+            fname = Path(path.removeprefix("/api/video/file/")).name
+            fpath = (COMFY_OUTPUT / fname).resolve()
+            if fpath.parent != COMFY_OUTPUT.resolve() or not fpath.is_file():
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            ctype = "video/mp4"
+            if fname.lower().endswith(".webm"):
+                ctype = "video/webm"
+            elif fname.lower().endswith(".gif"):
+                ctype = "image/gif"
+            return self._file(fpath, ctype)
+
+        if path == "/api/llm/status":
+            return self._json(gpu_arbiter.get_status())
+
+        if path == "/api/tts/voices":
+            return self._json({"voices": KOKORO_VOICES})
+
         if path == "/api/gallery":
             qs = urllib.parse.parse_qs(parsed.query)
             all_images = qs.get("all", ["0"])[0] in ("1", "true", "yes")
@@ -2811,6 +3345,135 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             parsed = urllib.parse.urlparse(self.path)
+
+            # --- Unified AI Suite POST Endpoints ---
+            if parsed.path == "/api/system/gpu/action":
+                data = read_json_body(self)
+                action = data.get("action")
+                if action == "pause":
+                    gpu_arbiter.pause_qwen_and_wait_idle()
+                elif action == "resume":
+                    gpu_arbiter.release_from_task("manual")
+                elif action == "free":
+                    gpu_arbiter.free_comfyui_vram()
+                elif action == "release_llm":
+                    gpu_arbiter.release_from_task("llm")
+                return self._json(gpu_arbiter.get_status())
+
+            if parsed.path == "/api/video/generate":
+                ctype = self.headers.get("Content-Type", "")
+                upload = None
+                pool_id = ""
+                if "multipart/form-data" in ctype:
+                    form = cgi.FieldStorage(
+                        fp=self.rfile,
+                        headers=self.headers,
+                        environ={"REQUEST_METHOD": "POST", "CONTENT_TYPE": ctype},
+                    )
+                    prompt = form_text(form, "prompt")
+                    mode = form_text(form, "mode") or "t2v"
+                    size = form_text(form, "size") or "preview"
+                    seconds = float(form_text(form, "seconds") or 3.0)
+                    seed = int(form_text(form, "seed") or random.randint(1, 2**31 - 1))
+                    pool_id = form_text(form, "pool_id")
+                    if "image" in form and field_has_upload(form["image"]):
+                        upload = form["image"]
+                else:
+                    data = read_json_body(self)
+                    prompt = str(data.get("prompt") or "").strip()
+                    mode = str(data.get("mode") or "t2v").strip()
+                    size = str(data.get("size") or "preview").strip()
+                    seconds = float(data.get("seconds") or 3.0)
+                    seed = int(data.get("seed") or random.randint(1, 2**31 - 1))
+                    pool_id = str(data.get("pool_id") or "").strip()
+
+                if not prompt:
+                    return self._json({"error": "Prompt é obrigatório"}, HTTPStatus.BAD_REQUEST)
+                if mode not in VIDEO_MODES:
+                    return self._json({"error": f"Modo inválido: {mode}"}, HTTPStatus.BAD_REQUEST)
+
+                size_cfg = VIDEO_SIZE_PRESETS.get(size, VIDEO_SIZE_PRESETS["preview"])
+                width = size_cfg["width"]
+                height = size_cfg["height"]
+                length = length_from_seconds(seconds)
+                job_id = uuid.uuid4().hex[:8]
+                image_name = None
+
+                if mode == "i2v":
+                    if upload is not None and getattr(upload, "file", None):
+                        fname = f"input_video_{job_id}.png"
+                        dest = COMFY_INPUT / fname
+                        with open(dest, "wb") as f_out:
+                            shutil.copyfileobj(upload.file, f_out)
+                        image_name = fname
+                    elif pool_id:
+                        rec = pool_image_record(pool_id)
+                        if rec and rec.get("file"):
+                            src = pool_main_path(rec)
+                            if src and src.is_file():
+                                fname = f"input_video_{job_id}_{rec['file']}"
+                                shutil.copyfile(src, COMFY_INPUT / fname)
+                                image_name = fname
+                    if not image_name:
+                        return self._json({"error": "Modo Imagem->Vídeo requer uma imagem enviada ou selecionada do pool"}, HTTPStatus.BAD_REQUEST)
+
+                with video_jobs_lock:
+                    video_jobs[job_id] = {
+                        "id": job_id,
+                        "mode": mode,
+                        "prompt": prompt,
+                        "seed": seed,
+                        "width": width,
+                        "height": height,
+                        "length": length,
+                        "seconds": seconds,
+                        "image_name": image_name,
+                        "status": "queued",
+                        "created_at": time.time(),
+                        "started_at": None,
+                        "finished_at": None,
+                        "files": [],
+                        "error": None,
+                    }
+
+                run_video_job(job_id, mode, prompt, seed, width, height, length, image_name)
+                return self._json({"ok": True, "job_id": job_id, "status": "queued"})
+
+            if parsed.path == "/api/llm/chat":
+                data = read_json_body(self)
+                messages = data.get("messages", [])
+                system_prompt = data.get("system_prompt", "Você é um assistente de IA especialista em engenharia de prompt para imagem e vídeo.")
+                temperature = float(data.get("temperature", 0.7))
+                max_tokens = int(data.get("max_tokens", 1024))
+                try:
+                    result = llm_chat(messages, system_prompt, temperature, max_tokens)
+                    return self._json(result)
+                except Exception as e:
+                    return self._json({"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+
+            if parsed.path == "/api/llm/release":
+                gpu_arbiter.release_from_task("llm")
+                return self._json({"ok": True, "message": "GPU liberada para a fila de imagens"})
+
+            if parsed.path == "/api/tts":
+                data = read_json_body(self)
+                text = str(data.get("text") or "").strip()
+                voice = str(data.get("voice") or "pf_dora").strip()
+                speed = float(data.get("speed") or 1.0)
+                if not text:
+                    return self._json({"error": "Texto para fala é obrigatório"}, HTTPStatus.BAD_REQUEST)
+                try:
+                    audio_bytes = tts_synthesize(text, voice, speed)
+                    self.send_response(HTTPStatus.OK)
+                    self.send_header("Content-Type", "audio/wav")
+                    self.send_header("Content-Length", str(len(audio_bytes)))
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(audio_bytes)
+                    return
+                except Exception as e:
+                    return self._json({"error": f"Erro síntese TTS: {e}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
+
             if parsed.path == "/api/prompts":
                 data = read_json_body(self)
                 created = create_prompt(data)

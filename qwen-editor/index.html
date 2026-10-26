@@ -490,11 +490,345 @@
       .lightbox-prev { left: 0.25rem; }
       .lightbox-next { right: 0.25rem; }
     }
+
+    /* --- Unified Suite Navigation & GPU Bar --- */
+    .suite-header {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.25rem;
+    }
+    .suite-top-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.25rem;
+    }
+    .suite-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .suite-badge {
+      background: linear-gradient(135deg, #6c8cff, #a064ff);
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+    }
+    .suite-brand h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin: 0;
+    }
+    .gpu-status-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: rgba(26, 29, 39, 0.85);
+      border: 1px solid var(--border);
+      border-radius: 30px;
+      padding: 0.35rem 0.85rem;
+    }
+    .gpu-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 0.2rem 0.55rem;
+      border-radius: 20px;
+      transition: all 0.3s;
+    }
+    .gpu-pill.mode-qwen { background: rgba(62, 207, 142, 0.15); color: #3ecf8e; border: 1px solid rgba(62, 207, 142, 0.3); }
+    .gpu-pill.mode-video { background: rgba(255, 170, 0, 0.15); color: #ffaa00; border: 1px solid rgba(255, 170, 0, 0.3); }
+    .gpu-pill.mode-llm { background: rgba(160, 100, 255, 0.15); color: #c084fc; border: 1px solid rgba(160, 100, 255, 0.3); }
+    .gpu-pill.mode-paused { background: rgba(255, 107, 107, 0.15); color: #ff6b6b; border: 1px solid rgba(255, 107, 107, 0.3); }
+    .gpu-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 6px currentColor;
+    }
+    .vram-meter {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .vram-bar-bg {
+      width: 70px;
+      height: 8px;
+      background: var(--bg);
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .vram-bar-fill {
+      height: 100%;
+      background: var(--accent);
+      transition: width 0.3s;
+    }
+    .vram-text {
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-family: monospace;
+    }
+    .btn-release-gpu {
+      background: var(--success);
+      color: #0b2216;
+      border: none;
+      border-radius: 14px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.25rem 0.65rem;
+      cursor: pointer;
+    }
+    .btn-release-gpu:hover { filter: brightness(1.1); }
+
+    .suite-nav {
+      display: flex;
+      gap: 0.5rem;
+      overflow-x: auto;
+      padding-bottom: 0.25rem;
+    }
+    .suite-tab-btn {
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.95rem;
+      font-weight: 600;
+      padding: 0.65rem 1.25rem;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .suite-tab-btn:hover {
+      color: var(--text);
+      border-color: #3e465a;
+    }
+    .suite-tab-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(108, 140, 255, 0.3);
+    }
+
+    .suite-tab-pane {
+      display: none;
+    }
+    .suite-tab-pane.active {
+      display: block;
+    }
+
+    /* Video Studio styles */
+    .video-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+    @media (max-width: 800px) { .video-grid { grid-template-columns: 1fr; } }
+    .video-player-wrap {
+      border-radius: 10px;
+      overflow: hidden;
+      background: #000;
+      aspect-ratio: 16/9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border);
+    }
+    .video-player-wrap video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .video-gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .video-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .video-card video {
+      width: 100%;
+      border-radius: 6px;
+      background: #000;
+    }
+    .video-meta {
+      font-size: 0.75rem;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* LLM Studio styles */
+    .llm-chat-container {
+      display: flex;
+      flex-direction: column;
+      height: 550px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .llm-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .llm-msg {
+      max-width: 85%;
+      padding: 0.85rem 1.1rem;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+    .llm-msg.user {
+      align-self: flex-end;
+      background: var(--accent);
+      color: #fff;
+      border-bottom-right-radius: 2px;
+    }
+    .llm-msg.assistant {
+      align-self: flex-start;
+      background: #232736;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-bottom-left-radius: 2px;
+    }
+    .llm-msg-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.6rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      flex-wrap: wrap;
+    }
+    .llm-msg-actions button {
+      background: rgba(255,255,255,0.08);
+      border: none;
+      border-radius: 6px;
+      padding: 0.25rem 0.5rem;
+      font-size: 0.75rem;
+      color: var(--text);
+      cursor: pointer;
+    }
+    .llm-msg-actions button:hover {
+      background: var(--accent);
+      color: #fff;
+    }
+    .llm-input-row {
+      display: flex;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+      align-items: center;
+    }
+    .llm-input-row textarea {
+      flex: 1;
+      min-height: 48px;
+      max-height: 120px;
+      resize: none;
+      padding: 0.6rem;
+    }
+    .llm-quick-prompts {
+      display: flex;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: rgba(15, 17, 23, 0.5);
+      border-top: 1px solid var(--border);
+      overflow-x: auto;
+    }
+    .llm-quick-btn {
+      background: rgba(108,140,255,0.1);
+      border: 1px solid rgba(108,140,255,0.25);
+      color: #8aa4ff;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      padding: 0.25rem 0.65rem;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .llm-quick-btn:hover {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    /* Voice Studio styles */
+    .voice-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+    @media (max-width: 800px) { .voice-grid { grid-template-columns: 1fr; } }
+    .voice-player-card {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      align-items: center;
+      justify-content: center;
+      min-height: 200px;
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+    .voice-player-card audio {
+      width: 100%;
+      max-width: 400px;
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>Image Editor</h1>
+    <div class="suite-header">
+      <div class="suite-top-row">
+        <div class="suite-brand">
+          <span class="suite-badge">⚡ QWENSWARM</span>
+          <h2>Unified AI Studio</h2>
+        </div>
+        <div class="gpu-status-bar" id="gpu-status-bar">
+          <div class="gpu-pill mode-qwen" id="gpu-pill">
+            <span class="gpu-dot"></span>
+            <span id="gpu-mode-text">GPU: Imagem Ativa</span>
+          </div>
+          <div class="vram-meter" title="Uso de VRAM na RTX 3060">
+            <div class="vram-bar-bg"><div class="vram-bar-fill" id="vram-bar-fill" style="width: 80%"></div></div>
+            <span class="vram-text" id="vram-text">-- / 12.0 GB</span>
+          </div>
+          <button type="button" id="btn-release-gpu" class="btn-release-gpu" style="display:none" onclick="releaseGPUToImage()">Liberar GPU p/ Imagens</button>
+        </div>
+      </div>
+
+      <nav class="suite-nav">
+        <button type="button" class="suite-tab-btn active" data-tab="tab-image">🎨 Imagem (Qwen 2.1)</button>
+        <button type="button" class="suite-tab-btn" data-tab="tab-video">🎬 Vídeo (MiniMax H3)</button>
+        <button type="button" class="suite-tab-btn" data-tab="tab-llm">💬 LLM (Qwen 27B)</button>
+        <button type="button" class="suite-tab-btn" data-tab="tab-voice">🎙️ Voz (Kokoro TTS)</button>
+      </nav>
+    </div>
+
+    <!-- TAB 1: IMAGEM (QWEN 2.1) -->
+    <div id="tab-image" class="suite-tab-pane active">
+      <h1>Image Editor</h1>
     <p class="sub" id="model-hint">Large images are automatically resized.</p>
 
     <form id="form">
@@ -634,6 +968,174 @@
         </div>
       </div>
       <div class="thumbs" id="gallery"></div>
+    </div>
+    </div> <!-- /tab-image -->
+
+    <!-- TAB 2: VÍDEO (MINIMAX H3) -->
+    <div id="tab-video" class="suite-tab-pane">
+      <h1>Video Studio — MiniMax H3</h1>
+      <p class="sub">Geração de vídeo de alta fidelidade com áudio sincronizado via FastVideo Trim 8-step. <em>(Pausa a fila de imagem durante a geração)</em></p>
+
+      <div class="video-grid">
+        <div class="card">
+          <label>Modo de Geração</label>
+          <select id="video-mode" class="select-input" onchange="toggleVideoMode()">
+            <option value="t2v">FastH3 Trim — Texto → Vídeo + Áudio (8 passos)</option>
+            <option value="i2v">MiniMax H3 — Imagem → Vídeo + Áudio (8 passos)</option>
+          </select>
+
+          <div id="video-i2v-source" style="display:none; margin-top:1rem">
+            <label>Imagem Inicial (Primeiro Frame)</label>
+            <div class="field-row">
+              <select id="video-pool-select" class="select-input" onchange="onVideoPoolSelect()">
+                <option value="">— Escolher do Pool de Imagens —</option>
+              </select>
+            </div>
+            <div class="drop" id="video-drop" style="min-height:90px; margin-top:0.5rem">
+              <input type="file" id="video-file-input" accept="image/*">
+              <span class="hint" id="video-file-hint">Ou arraste uma foto aqui</span>
+            </div>
+          </div>
+
+          <label for="video-prompt" style="margin-top:1rem">Prompt do Vídeo</label>
+          <textarea id="video-prompt" placeholder="Ex: cinematic drone shot of a coastline at sunset, waves crashing, ultra detailed, photorealistic 8k, slow motion"></textarea>
+
+          <div class="row">
+            <div class="field">
+              <label for="video-size">Resolução / Proporção</label>
+              <select id="video-size" class="select-input">
+                <option value="preview">16:9 preview (864×480) — Rápido</option>
+                <option value="native">16:9 nativo (1344×768) — HD</option>
+                <option value="square">1:1 quadrado (768×768)</option>
+              </select>
+            </div>
+            <div class="field-narrow">
+              <label for="video-seconds">Duração</label>
+              <select id="video-seconds" class="select-input">
+                <option value="3">3 segundos</option>
+                <option value="4">4 segundos</option>
+                <option value="5">5 segundos</option>
+              </select>
+            </div>
+            <div class="field-narrow">
+              <label for="video-seed">Seed (-1 = rand)</label>
+              <input type="number" id="video-seed" value="-1">
+            </div>
+          </div>
+
+          <div class="row" style="margin-top:1.25rem">
+            <button type="button" id="btn-generate-video" class="btn-queue" onclick="generateVideo()">🎬 Gerar Vídeo</button>
+            <span id="video-status-msg" style="font-size:0.85rem; color:var(--muted)"></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <label>Visualizador de Vídeo</label>
+          <div class="video-player-wrap" id="video-player-wrap">
+            <div style="color:var(--muted); font-size:0.9rem; text-align:center; padding:1rem" id="video-empty-player">
+              Nenhum vídeo em reprodução.<br>Gere um vídeo ou clique em um da galeria abaixo.
+            </div>
+            <video id="video-player" controls autoplay loop style="display:none"></video>
+          </div>
+          <div style="margin-top:0.75rem; display:flex; justify-content:space-between; align-items:center">
+            <span id="video-player-meta" style="font-size:0.8rem; color:var(--muted)"></span>
+            <a id="video-download-btn" class="btn-secondary" style="display:none; text-decoration:none; padding:0.4rem 0.8rem; font-size:0.8rem; border-radius:6px" download>⬇ Baixar MP4</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:1.5rem">
+        <div class="gallery-head">
+          <h2>Galeria de Vídeos Gerados</h2>
+          <button type="button" class="btn-secondary" onclick="loadVideoGallery()">🔄 Atualizar</button>
+        </div>
+        <div class="video-gallery-grid" id="video-gallery-grid">
+          <div style="color:var(--muted); font-size:0.85rem">Carregando vídeos...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: LLM STUDIO (QWEN 27B) -->
+    <div id="tab-llm" class="suite-tab-pane">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.25rem; flex-wrap:wrap; gap:1rem">
+        <div>
+          <h1>LLM Studio — Qwen 3.8 27B</h1>
+          <p class="sub" style="margin-bottom:0">Assistente sem censura via llama.cpp (FastMTP). <em>(Pausa a fila de imagem enquanto ativo)</em></p>
+        </div>
+        <button type="button" class="btn-secondary" onclick="releaseGPUToImage()">Liberar GPU para Imagens</button>
+      </div>
+
+      <div class="llm-chat-container">
+        <div class="llm-messages" id="llm-messages">
+          <div class="llm-msg assistant">
+            👋 Olá! Sou o <strong>Qwen 3.8 27B Uncensored</strong> acelerado na sua GPU.
+            <br>Posso te ajudar a refinar prompts detalhados para o editor de imagens, inventar cenas dinâmicas para o MiniMax H3 Vídeo ou gerar roteiros e histórias.
+          </div>
+        </div>
+
+        <div class="llm-quick-prompts">
+          <button type="button" class="llm-quick-btn" onclick="sendQuickPrompt('Melhore este prompt para imagem fotorrealista com detalhes de iluminação, lentes e textura de pele: ')">✨ Aprimorar Prompt Imagem</button>
+          <button type="button" class="llm-quick-btn" onclick="sendQuickPrompt('Crie uma descrição cinemática vívida para um vídeo de 5 segundos no MiniMax H3: ')">🎬 Criar Cena p/ Vídeo</button>
+          <button type="button" class="llm-quick-btn" onclick="sendQuickPrompt('Descreva uma roupa elegante e detalhada para substituir num modelo: ')">👗 Prompt de Roupa</button>
+          <button type="button" class="llm-quick-btn" onclick="clearLLMChat()">🗑 Limpar Chat</button>
+        </div>
+
+        <div class="llm-input-row">
+          <textarea id="llm-input" placeholder="Digite sua mensagem para a LLM... (Pressione Enter para enviar, Shift+Enter para quebra de linha)" onkeydown="onLLMKeyDown(event)"></textarea>
+          <button type="button" id="llm-send-btn" onclick="sendChatMessage()">Enviar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: VOZ (KOKORO TTS) -->
+    <div id="tab-voice" class="suite-tab-pane">
+      <h1>Voice Studio — Kokoro-82M</h1>
+      <p class="sub">Síntese de fala neural ultra-rápida (&lt;1s por áudio). Suporte nativo a Português do Brasil e Inglês.</p>
+
+      <div class="voice-grid">
+        <div class="card">
+          <label for="voice-text">Texto para Falar</label>
+          <textarea id="voice-text" placeholder="Digite ou cole aqui o texto que a IA deve falar com entonação natural..."></textarea>
+
+          <div class="row">
+            <div class="field">
+              <label for="voice-select">Voz</label>
+              <select id="voice-select" class="select-input">
+                <option value="pf_dora">🇧🇷 Dora (Português - Feminina)</option>
+                <option value="pm_alex">🇧🇷 Alex (Português - Masculina)</option>
+                <option value="pm_santa">🇧🇷 Santa (Português - Grave / Papai Noel)</option>
+                <option value="af_heart">🇺🇸 Heart (Inglês - Feminina Suave)</option>
+                <option value="af_bella">🇺🇸 Bella (Inglês - Feminina)</option>
+                <option value="am_adam">🇺🇸 Adam (Inglês - Masculina)</option>
+                <option value="am_michael">🇺🇸 Michael (Inglês - Narrador)</option>
+              </select>
+            </div>
+            <div class="field-narrow">
+              <label for="voice-speed">Velocidade</label>
+              <select id="voice-speed" class="select-input">
+                <option value="0.8">0.8x (Lenta)</option>
+                <option value="1.0" selected>1.0x (Normal)</option>
+                <option value="1.2">1.2x (Rápida)</option>
+                <option value="1.4">1.4x (Muito rápida)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row" style="margin-top:1.25rem">
+            <button type="button" id="btn-generate-voice" class="btn-queue" onclick="generateVoice()">🎙️ Sintetizar Áudio</button>
+            <span id="voice-status-msg" style="font-size:0.85rem; color:var(--muted)"></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <label>Player de Áudio</label>
+          <div class="voice-player-card">
+            <audio id="voice-audio-player" controls style="display:none"></audio>
+            <div id="voice-empty-msg" style="color:var(--muted); font-size:0.9rem">Nenhum áudio gerado ainda.</div>
+            <a id="voice-download-btn" class="btn-secondary" style="display:none; text-decoration:none; padding:0.5rem 1rem; border-radius:8px" download="fala_kokoro.wav">⬇ Baixar Áudio WAV</a>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1956,6 +2458,448 @@
       }
       btn.disabled = false;
     });
+
+    // ==========================================
+    // --- Unified AI Suite Client Controller ---
+    // ==========================================
+
+    // Tab Navigation
+    function switchTab(tabId) {
+      document.querySelectorAll('.suite-tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabId);
+      });
+      document.querySelectorAll('.suite-tab-pane').forEach(pane => {
+        pane.classList.toggle('active', pane.id === tabId);
+      });
+      if (tabId === 'tab-video') {
+        loadVideoGallery();
+        populateVideoPoolSelect();
+      }
+    }
+
+    document.querySelectorAll('.suite-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+
+    // GPU Telemetry & Mode Arbiter Polling
+    let currentGPUMode = 'qwen';
+    async function pollGPUStatus() {
+      try {
+        const res = await fetch('/api/system/gpu');
+        if (!res.ok) return;
+        const st = await res.json();
+        currentGPUMode = st.mode;
+
+        const pill = document.getElementById('gpu-pill');
+        const pillText = document.getElementById('gpu-mode-text');
+        const barFill = document.getElementById('vram-bar-fill');
+        const vramText = document.getElementById('vram-text');
+        const releaseBtn = document.getElementById('btn-release-gpu');
+
+        // Mode badge styling
+        pill.className = 'gpu-pill';
+        if (st.mode === 'qwen') {
+          if (st.queue_paused) {
+            pill.classList.add('mode-paused');
+            pillText.textContent = '⏸️ GPU: Fila Pausada';
+          } else {
+            pill.classList.add('mode-qwen');
+            pillText.textContent = '🟢 GPU: Imagem Ativa';
+          }
+        } else if (st.mode === 'video') {
+          pill.classList.add('mode-video');
+          pillText.textContent = '🎬 GPU: MiniMax Vídeo';
+        } else if (st.mode === 'llm') {
+          pill.classList.add('mode-llm');
+          pillText.textContent = '💬 GPU: Qwen 27B Chat';
+        }
+
+        // VRAM Bar
+        if (st.vram_total_mb > 0) {
+          const usedGb = (st.vram_used_mb / 1024).toFixed(1);
+          const totalGb = (st.vram_total_mb / 1024).toFixed(1);
+          const pct = Math.round((st.vram_used_mb / st.vram_total_mb) * 100);
+          barFill.style.width = pct + '%';
+          vramText.textContent = `${usedGb} / ${totalGb} GB (${st.gpu_util_pct}%)`;
+        }
+
+        // Show release button if another AI is holding GPU or queue is paused
+        if (releaseBtn) {
+          releaseBtn.style.display = (st.mode !== 'qwen' || st.queue_paused) ? 'inline-block' : 'none';
+        }
+      } catch (e) {
+        // Retry next cycle
+      }
+    }
+    setInterval(pollGPUStatus, 3000);
+    pollGPUStatus();
+
+    async function releaseGPUToImage() {
+      try {
+        await fetch('/api/llm/release', { method: 'POST' });
+        await fetch('/api/system/gpu/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'resume' }),
+        });
+        await pollGPUStatus();
+        alert('GPU liberada! A fila de imagens do Qwen 2.1 foi retomada.');
+      } catch (err) {
+        alert('Erro ao liberar GPU: ' + err.message);
+      }
+    }
+
+    // --- Video Studio Controller ---
+    function toggleVideoMode() {
+      const mode = document.getElementById('video-mode').value;
+      const i2vSource = document.getElementById('video-i2v-source');
+      i2vSource.style.display = mode === 'i2v' ? 'block' : 'none';
+      if (mode === 'i2v') populateVideoPoolSelect();
+    }
+
+    function populateVideoPoolSelect() {
+      const select = document.getElementById('video-pool-select');
+      if (!select) return;
+      const cur = select.value;
+      select.innerHTML = '<option value="">— Escolher do Pool de Imagens —</option>';
+      poolImages.forEach((img, idx) => {
+        const opt = document.createElement('option');
+        opt.value = img.id;
+        opt.textContent = `${idx + 1}. ${img.name || img.id}`;
+        select.appendChild(opt);
+      });
+      if (cur) select.value = cur;
+    }
+
+    function onVideoPoolSelect() {
+      const sel = document.getElementById('video-pool-select').value;
+      const hint = document.getElementById('video-file-hint');
+      if (sel) {
+        const entry = poolEntry(sel);
+        hint.textContent = `Selecionado do pool: ${entry?.name || sel}`;
+      } else {
+        hint.textContent = 'Ou arraste uma foto aqui';
+      }
+    }
+
+    const videoDropEl = document.getElementById('video-drop');
+    const videoFileInputEl = document.getElementById('video-file-input');
+    if (videoDropEl && videoFileInputEl) {
+      videoDropEl.addEventListener('click', () => videoFileInputEl.click());
+      videoDropEl.addEventListener('dragover', e => { e.preventDefault(); videoDropEl.classList.add('dragover'); });
+      videoDropEl.addEventListener('dragleave', () => videoDropEl.classList.remove('dragover'));
+      videoDropEl.addEventListener('drop', e => {
+        e.preventDefault();
+        videoDropEl.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+          videoFileInputEl.files = e.dataTransfer.files;
+          document.getElementById('video-file-hint').textContent = `Arquivo: ${e.dataTransfer.files[0].name}`;
+        }
+      });
+      videoFileInputEl.addEventListener('change', () => {
+        if (videoFileInputEl.files.length) {
+          document.getElementById('video-file-hint').textContent = `Arquivo: ${videoFileInputEl.files[0].name}`;
+        }
+      });
+    }
+
+    async function generateVideo() {
+      const btn = document.getElementById('btn-generate-video');
+      const statusMsg = document.getElementById('video-status-msg');
+      const prompt = document.getElementById('video-prompt').value.trim();
+      const mode = document.getElementById('video-mode').value;
+      const size = document.getElementById('video-size').value;
+      const seconds = document.getElementById('video-seconds').value;
+      const seed = document.getElementById('video-seed').value;
+
+      if (!prompt) {
+        alert('Por favor, digite um prompt para o vídeo.');
+        return;
+      }
+
+      btn.disabled = true;
+      statusMsg.textContent = 'Iniciando... (pausará a fila de imagens para liberar a GPU)';
+
+      try {
+        const fd = new FormData();
+        fd.append('prompt', prompt);
+        fd.append('mode', mode);
+        fd.append('size', size);
+        fd.append('seconds', seconds);
+        fd.append('seed', seed);
+
+        if (mode === 'i2v') {
+          const poolId = document.getElementById('video-pool-select').value;
+          if (poolId) fd.append('pool_id', poolId);
+          if (videoFileInputEl && videoFileInputEl.files && videoFileInputEl.files.length) {
+            fd.append('image', videoFileInputEl.files[0]);
+          }
+        }
+
+        const res = await fetch('/api/video/generate', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erro na requisição');
+
+        statusMsg.textContent = 'Vídeo enfileirado! Aguardando vez na GPU...';
+        await pollVideoJob(data.job_id);
+      } catch (err) {
+        statusMsg.textContent = 'Erro: ' + err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function pollVideoJob(jobId) {
+      const statusMsg = document.getElementById('video-status-msg');
+      while (true) {
+        await new Promise(r => setTimeout(r, 3000));
+        try {
+          const res = await fetch(`/api/video/job/${jobId}`);
+          if (!res.ok) continue;
+          const job = await res.json();
+          if (job.status === 'waiting_gpu') {
+            statusMsg.textContent = 'Aguardando item atual da fila de imagens terminar para pausar e assumir a GPU...';
+          } else if (job.status === 'running') {
+            statusMsg.textContent = 'Renderizando vídeo no MiniMax H3 via ComfyUI (8 passos)...';
+          } else if (job.status === 'done') {
+            statusMsg.textContent = 'Vídeo concluído! Fila de imagem retomada automaticamente.';
+            if (job.video_url) playVideoInPlayer(job.video_url, job.prompt);
+            loadVideoGallery();
+            break;
+          } else if (job.status === 'error') {
+            statusMsg.textContent = 'Erro no vídeo: ' + (job.error || 'Falha na renderização');
+            break;
+          }
+        } catch { /* retry */ }
+      }
+    }
+
+    function playVideoInPlayer(url, title) {
+      const wrap = document.getElementById('video-player-wrap');
+      const emptyMsg = document.getElementById('video-empty-player');
+      const player = document.getElementById('video-player');
+      const meta = document.getElementById('video-player-meta');
+      const downloadBtn = document.getElementById('video-download-btn');
+
+      emptyMsg.style.display = 'none';
+      player.style.display = 'block';
+      player.src = url;
+      player.play();
+
+      meta.textContent = title ? (title.slice(0, 50) + '…') : 'Vídeo MiniMax H3';
+      downloadBtn.style.display = 'inline-block';
+      downloadBtn.href = url;
+    }
+
+    async function loadVideoGallery() {
+      const grid = document.getElementById('video-gallery-grid');
+      try {
+        const res = await fetch('/api/video/gallery');
+        if (!res.ok) return;
+        const data = await res.json();
+        const vids = data.videos || [];
+        if (!vids.length) {
+          grid.innerHTML = '<div style="color:var(--muted); font-size:0.85rem">Nenhum vídeo encontrado no diretório de saída ainda.</div>';
+          return;
+        }
+        grid.innerHTML = vids.map(v => `
+          <div class="video-card">
+            <video src="${v.url}" preload="metadata" onmouseenter="this.play()" onmouseleave="this.pause()" onclick="playVideoInPlayer('${v.url}', '${v.filename}')"></video>
+            <div class="video-meta">
+              <span>${v.created_at || ''}</span>
+              <span>${v.size_mb} MB</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.25rem">
+              <button type="button" class="btn-secondary" style="padding:0.25rem 0.6rem; font-size:0.75rem" onclick="playVideoInPlayer('${v.url}', '${v.filename}')">▶ Assistir</button>
+              <a href="${v.url}" download="${v.filename}" style="font-size:0.75rem; color:var(--muted); text-decoration:underline">Baixar</a>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        grid.innerHTML = `<div style="color:var(--error); font-size:0.85rem">Erro ao carregar vídeos: ${err.message}</div>`;
+      }
+    }
+
+    // --- LLM Studio Controller ---
+    let chatHistory = [];
+
+    function onLLMKeyDown(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendChatMessage();
+      }
+    }
+
+    function sendQuickPrompt(prefix) {
+      const input = document.getElementById('llm-input');
+      input.value = prefix;
+      input.focus();
+    }
+
+    function clearLLMChat() {
+      chatHistory = [];
+      document.getElementById('llm-messages').innerHTML = `
+        <div class="llm-msg assistant">
+          Chat reiniciado. O que você gostaria de criar ou aprimorar?
+        </div>
+      `;
+    }
+
+    async function sendChatMessage() {
+      const input = document.getElementById('llm-input');
+      const text = input.value.trim();
+      if (!text) return;
+
+      const container = document.getElementById('llm-messages');
+      const sendBtn = document.getElementById('llm-send-btn');
+
+      // Append user msg
+      const userBubble = document.createElement('div');
+      userBubble.className = 'llm-msg user';
+      userBubble.textContent = text;
+      container.appendChild(userBubble);
+      chatHistory.push({ role: 'user', content: text });
+      input.value = '';
+      container.scrollTop = container.scrollHeight;
+
+      // Typing indicator
+      const typing = document.createElement('div');
+      typing.className = 'llm-msg assistant';
+      typing.id = 'llm-typing-indicator';
+      typing.innerHTML = '⏳ <em>Qwen 27B pensando (assumindo GPU)...</em>';
+      container.appendChild(typing);
+      container.scrollTop = container.scrollHeight;
+      sendBtn.disabled = true;
+
+      try {
+        const res = await fetch('/api/llm/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: chatHistory,
+            system_prompt: 'Você é um assistente de IA especialista em prompts detalhados para imagem fotorrealista e vídeo cinemático.',
+            temperature: 0.7,
+            max_tokens: 1024,
+          }),
+        });
+        const data = await res.json();
+        typing.remove();
+
+        if (!res.ok) throw new Error(data.error || 'Erro na resposta da LLM');
+
+        const reply = data.choices?.[0]?.message?.content || 'Sem resposta.';
+        chatHistory.push({ role: 'assistant', content: reply });
+
+        // Render assistant bubble with 1-click actions
+        const asstBubble = document.createElement('div');
+        asstBubble.className = 'llm-msg assistant';
+
+        const contentDiv = document.createElement('div');
+        contentDiv.textContent = reply;
+        asstBubble.appendChild(contentDiv);
+
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'llm-msg-actions';
+
+        const copyBtn = document.createElement('button');
+        copyBtn.textContent = '📋 Copiar';
+        copyBtn.onclick = () => {
+          navigator.clipboard.writeText(reply);
+          copyBtn.textContent = '✓ Copiado!';
+          setTimeout(() => copyBtn.textContent = '📋 Copiar', 2000);
+        };
+        actionsDiv.appendChild(copyBtn);
+
+        const sendToImgBtn = document.createElement('button');
+        sendToImgBtn.textContent = '🎨 Usar no Prompt de Imagem';
+        sendToImgBtn.onclick = () => {
+          document.getElementById('prompt').value = reply;
+          switchTab('tab-image');
+          document.getElementById('prompt').scrollIntoView({ behavior: 'smooth' });
+        };
+        actionsDiv.appendChild(sendToImgBtn);
+
+        const sendToVidBtn = document.createElement('button');
+        sendToVidBtn.textContent = '🎬 Usar no Prompt de Vídeo';
+        sendToVidBtn.onclick = () => {
+          document.getElementById('video-prompt').value = reply;
+          switchTab('tab-video');
+          document.getElementById('video-prompt').scrollIntoView({ behavior: 'smooth' });
+        };
+        actionsDiv.appendChild(sendToVidBtn);
+
+        const sendToVoiceBtn = document.createElement('button');
+        sendToVoiceBtn.textContent = '🎙️ Falar com Voz Kokoro';
+        sendToVoiceBtn.onclick = () => {
+          document.getElementById('voice-text').value = reply;
+          switchTab('tab-voice');
+        };
+        actionsDiv.appendChild(sendToVoiceBtn);
+
+        asstBubble.appendChild(actionsDiv);
+        container.appendChild(asstBubble);
+        container.scrollTop = container.scrollHeight;
+        pollGPUStatus();
+      } catch (err) {
+        typing.remove();
+        const errBubble = document.createElement('div');
+        errBubble.className = 'llm-msg assistant';
+        errBubble.style.borderColor = 'var(--error)';
+        errBubble.textContent = 'Erro ao processar LLM: ' + err.message;
+        container.appendChild(errBubble);
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    // --- Voice Studio Controller ---
+    async function generateVoice() {
+      const text = document.getElementById('voice-text').value.trim();
+      const voice = document.getElementById('voice-select').value;
+      const speed = parseFloat(document.getElementById('voice-speed').value);
+      const btn = document.getElementById('btn-generate-voice');
+      const statusMsg = document.getElementById('voice-status-msg');
+
+      if (!text) {
+        alert('Por favor, digite o texto para ser falado.');
+        return;
+      }
+
+      btn.disabled = true;
+      statusMsg.textContent = 'Sintetizando áudio no Kokoro-82M...';
+
+      try {
+        const res = await fetch('/api/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, voice, speed }),
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || res.statusText);
+        }
+
+        const blob = await res.blob();
+        const audioUrl = URL.createObjectURL(blob);
+
+        const player = document.getElementById('voice-audio-player');
+        const emptyMsg = document.getElementById('voice-empty-msg');
+        const dlBtn = document.getElementById('voice-download-btn');
+
+        emptyMsg.style.display = 'none';
+        player.style.display = 'block';
+        player.src = audioUrl;
+        player.play();
+
+        dlBtn.style.display = 'inline-block';
+        dlBtn.href = audioUrl;
+        statusMsg.textContent = 'Áudio gerado em menos de 1 segundo!';
+      } catch (err) {
+        statusMsg.textContent = 'Erro: ' + err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
 
     loadGallery();
     loadPool();
