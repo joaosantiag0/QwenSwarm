@@ -60,6 +60,7 @@ How QwenSwarm works and how we operate it (implementation history as of October 
 
 ## Key API Endpoints
 
+### 🎨 Image Studio (Qwen 2.1)
 - `GET /api/pool` · `POST /api/pool` (multipart `images`) · `GET /api/pool/{id}/thumb|file` · `DELETE /api/pool/{id}` (blocked if referenced in an active queue)
 - `POST /api/batch` — `pool_ids` (ordered by priority) + `preset_start_id`/`preset_end_id` + settings + `force`
 - `POST /api/quick` — Priority item (textarea prompt + 1st pool image + references)
@@ -72,6 +73,29 @@ How QwenSwarm works and how we operate it (implementation history as of October 
 - `POST /api/worker/complete` — Receives completed image and metadata from a satellite worker.
 - `POST /api/worker/fail` — Reports a failed item and re-enqueues it for retry.
 - Gallery: `GET /api/gallery`, `DELETE /api/images` (deletes all `qwen_web_*.png` files **and** resets metadata)
+
+### 🎬 Video Studio (MiniMax H3)
+- `GET /api/video/status` — Checks readiness of UNet, CLIP, and VAE models for T2V and I2V.
+- `POST /api/video/generate` — Generates video (pausing Qwen image queue automatically). Accepts JSON or multipart (`prompt`, `mode`: `t2v`|`i2v`, `size`: `preview`|`native`|`square`, `seconds`: 3-5, `seed`, `pool_id` or uploaded `image`).
+- `GET /api/video/jobs` · `GET /api/video/job/{id}` — Job status polling (`waiting_gpu`, `running`, `done`, `error`) and result URLs.
+- `GET /api/video/gallery` — Lists all generated videos with file metadata.
+- `GET /api/video/file/{filename}` — Streams video (`video/mp4`) with Range request support.
+- `DELETE /api/video/file/{filename}` — Permanently deletes a generated video file.
+
+### 💬 LLM Studio (Qwen 3.8 27B)
+- `GET /api/llm/status` — Returns GPU Arbiter state, model details, and idle timeout status.
+- `POST /api/llm/chat` — OpenAI-compatible chat completion (`messages`, `system_prompt`, `temperature`, `max_tokens`). Automatically pauses Qwen image queue and purges ComfyUI VRAM.
+- `POST /api/llm/release` — Manually shuts down `llama-server` and resumes the Qwen image queue immediately.
+
+### 🎙️ Voice & Audio (Kokoro-82M & Whisper)
+- `GET /api/tts/voices` — Lists available neural voices (PT-BR and EN-US).
+- `POST /api/tts` — Synthesizes speech (`text`, `voice`, `speed`) returning raw WAV audio in <1 second.
+- `GET /api/transcribe/status` — Checks Whisper model availability and supported languages.
+- `POST /api/transcribe` — Transcribes audio/video files via Whisper.cpp (accepts multipart `audio`/`file` or JSON `audio_base64`, with optional `lang`). Returns full text, language detection, and segment timestamps.
+
+### ⚙️ System & GPU Telemetry
+- `GET /api/system/gpu` — Real-time telemetry (`vram_used_mb`, `vram_total_mb`, `gpu_util_pct`, `temperature_c`, `mode`, `queue_paused`).
+- `POST /api/system/gpu/action` — Manual control actions (`pause`, `resume`, `free`, `release_llm`).
 
 ## Operations / Deployment (Linux Servers)
 
