@@ -1,6 +1,6 @@
-# QwenSwarm: Distributed ComfyUI & Qwen Image Generation Cluster
+# QwenSwarm: Unified Multi-Modal AI Suite & Distributed GPU Cluster
 
-A distributed, production-grade image generation and editing cluster powered by **ComfyUI** and **Qwen Image 2.1** (quantized GGUF with Pruna 8-step LoRA). Built for high-throughput batch generation, real-time priority editing, and resilient multi-GPU scaling across heterogeneous hardware.
+A production-grade, distributed AI studio powered by **ComfyUI**, **Qwen Image 2.1**, **MiniMax H3 / FastVideo**, **Qwen 3.8 27B LLM**, **Kokoro TTS**, and **Whisper STT**. Built for high-throughput batch generation, priority editing, seamless multi-modal creation, and automated GPU arbitration across heterogeneous hardware.
 
 ---
 
@@ -8,203 +8,215 @@ A distributed, production-grade image generation and editing cluster powered by 
 
 ```
                       ┌──────────────────────────────────────────────┐
-                      │              Web UI / Clients                │
-                      │       (REST API / Web Studio UI)             │
+                      │              Web UI & AI Agents              │
+                      │  • Unified Multi-Studio SPA (Port :3000)     │
+                      │  • Agentic Skill & CLI (qwenswarm-api)       │
                       └──────────────────────┬───────────────────────┘
                                              │ HTTP :3000
                                              ▼
                       ┌──────────────────────────────────────────────┐
                       │          MASTER SERVER (qwen-editor)         │
-                      │  • Persistent Queue (queue.json)             │
-                      │  • Image Pool & Preset Metadata Management   │
-                      │  • Lease Coordinator (/api/worker/*)         │
-                      │  • Embedded ComfyUI Worker (Local GPU)       │
-                      └──────────────┬───────────────────────────────┘
-                                     │
-                 ┌───────────────────┴───────────────────┐
-                 │ Lease & Sync                          │ Autonomous Offline Buffer
-                 ▼                                       ▼
-┌─────────────────────────────────┐     ┌─────────────────────────────────┐
-│     LOCAL WORKER (Master)       │     │    SATELLITE WORKER (Remote)    │
-│ • RTX 3060 12GB (Desktop)       │     │ • RTX 3060 6GB (Laptop / Node)  │
-│ • In-flight Prefetching         │     │ • Low-VRAM Dynamic Offloading   │
-│ • Local ComfyUI (127.0.0.1:8188)│     │ • Pre-cached Pool & Preset Refs │
-└─────────────────────────────────┘     │ • Local Persistent Outbox Buffer│
-                                        │ • Local ComfyUI (127.0.0.1:8188)│
-                                        └─────────────────────────────────┘
+                      │  • Automated GPU Arbiter (Auto-Pause/Resume) │
+                      │  • Persistent Queue (queue.json >130k items) │
+                      │  • Image Pool & Video Gallery Management     │
+                      │  • Satellite Cluster Lease Coordinator       │
+                      └──────┬───────────────┬───────────────┬───────┘
+                             │               │               │
+            ┌────────────────┴──────┐        │               └────────────────┐
+            │ GPU Arbitration       │        │ Subprocess / Sidecar           │ Cluster Leases
+            ▼                       ▼        ▼                                ▼
+┌───────────────────────┐ ┌───────────────┐ ┌───────────────────┐ ┌───────────────────────┐
+│     ComfyUI Engine    │ │  llama-server │ │ Kokoro & Whisper  │ │ SATELLITE NODES       │
+│ • Qwen Image 2.1      │ │ • Qwen 3.8    │ │ • Kokoro-82M TTS  │ │ • Laptop / Worker GPU │
+│   (GGUF + Pruna LoRA) │ │   27B Hauhau  │ │   (<1s audio/wav) │ │ • Autonomous offline  │
+│ • MiniMax H3 / FastH3 │ │   (FastMTP    │ │ • Whisper.cpp STT │ │   outbox buffer       │
+│   (T2V & I2V + Audio) │ │   Speculative)│ │   (CUDA small)    │ │ • Local ComfyUI       │
+└───────────────────────┘ └───────────────┘ └───────────────────┘ └───────────────────────┘
 ```
 
-The system coordinates work across multiple nodes:
-- **Master Server (`qwen-editor`)**: Serves the single-page web UI, maintains image pool uploads, manages prompts and reference images, coordinates priority tasks, and runs a persistent job queue.
-- **Satellite Workers (`satellite-worker`)**: Standalone worker instances running on remote nodes (such as low-VRAM 6GB laptops). They lease blocks of pending tasks, pre-cache input assets, generate images locally, and deliver results to the master.
-- **Offline Fault Tolerance (`outbox/`)**: If the master server is turned off or disconnected, satellite workers continue rendering their leased tasks locally without interruptions. Generated images and metadata are stored in a persistent local `outbox/` directory, which automatically flushes to the master as soon as connectivity is restored.
+The system unifies five major generative AI engines on a single master machine with low-overhead GPU arbitration:
+- **🎨 Image Studio (Qwen 2.1)**: High-throughput batch queue (>130k items) and real-time single-image priority editing.
+- **🎬 Video Studio (MiniMax H3 / FastVideo)**: Text-to-Video and Image-to-Video generation (8-step) with synchronized audio.
+- **💬 LLM Studio (Qwen 3.8 27B Uncensored)**: Conversational chat and prompt engineering via `llama.cpp` with FastMTP speculative decoding.
+- **🎙️ Voice Studio (Kokoro-82M TTS)**: Neural voice synthesis in Brazilian Portuguese and English in <1 second per clip.
+- **📝 Transcription Studio (Whisper.cpp)**: Fast audio transcription and subtitle alignment with automatic language detection.
+- **⚡ Automated GPU Arbiter**: Manages single-GPU constraints (RTX 3060 12GB). When Video or LLM generation starts, it pauses the continuous background image queue, purges ComfyUI VRAM, runs the heavy task, and automatically resumes the queue upon completion.
+- **🌐 Distributed Cluster**: Remote worker nodes (e.g. RTX 3060 6GB Laptop) pull leased blocks of tasks via API, rendering in parallel with local offline buffering (`outbox/`).
 
 ---
 
-## Key Features
+## Automated GPU Arbiter (Queue Auto-Pause & Resume)
 
-- **Blazing Fast Pipeline**:
-  - **Prefetching**: Submits the next prompt to ComfyUI while the current one is still finishing, eliminating idle gap between jobs.
-  - **Resize Cache**: Resizes input pool images once per resolution and reuses them across batch runs.
-  - Generates full 768p/1024p images in **~37s to 46s** per image.
-- **Dual-Lane Prioritization**:
-  - **Quick Lane**: Instant priority for single-image edits and API requests without stopping active batch runs.
-  - **Batch Lane**: Handles hundreds or thousands of combinatorial preset generations cleanly in sequence.
-- **Hardware-Adaptive Inference**:
-  - Master node runs full-precision CLIP + GGUF UNet on 12GB VRAM.
-  - Satellite nodes run on constrained hardware (RTX 3060 6GB) using `--lowvram`, `--vram-headroom 1.2`, and `--reserve-vram 0.8` with pinned CPU RAM offloading.
-- **Safe Batch Guardrails**: Protects against accidental queue bloat when scaling large pools with multiple presets.
-- **Pure Python Backend**: Zero external runtime dependencies beyond Python 3.12, standard library HTTP server, and Pillow.
+Consumer GPUs (such as the RTX 3060 12GB) cannot run multiple heavy generative models concurrently without CUDA Out Of Memory (OOM) errors. The `GPUArbiter` coordinates access:
+
+```mermaid
+stateDiagram-v2
+    [*] --> ActiveQueue: Service Start
+    ActiveQueue: 🟢 Qwen Image Queue Active (Batch Processing)
+    
+    state "On-Demand Request" as Req
+    ActiveQueue --> Req: Video Generation or LLM Chat triggered
+    
+    state "Graceful Pause & VRAM Clean" as Pause
+    Req --> Pause: 1. Set queue_paused = True<br/>2. Wait for in-flight image (<35s)<br/>3. Purge ComfyUI VRAM (POST /free)
+    
+    state "Executing Heavy Model" as Exec
+    Pause --> Exec: 🎬 MiniMax H3 (ComfyUI)<br/>💬 Qwen 27B (llama-server)
+    
+    state "Automatic Resume" as Resume
+    Exec --> Resume: Task complete or LLM 4-min idle timeout
+    Resume --> ActiveQueue: 4. Shutdown llama-server / clear VRAM<br/>5. Set queue_paused = False
+```
+
+- **Zero Compute Wasted**: Current in-flight image rendering finishes cleanly before GPU ownership transfers.
+- **Satellite Immunity**: Secondary worker nodes continue rendering on their own hardware uninterrupted while the Master GPU is paused.
+- **Idle Timeout**: If an interactive LLM chat session is left open without messages for 4 minutes, the server terminates `llama-server` and resumes image rendering automatically.
 
 ---
 
-## Repository Structure
+## Models & AI Capabilities Installed
 
-```
-.
-├── qwen-editor/                 # Master Server & Web UI
-│   ├── app.py                   # Master HTTP server, queue engine & API
-│   ├── index.html               # Single-page web interface (no build step needed)
-│   ├── download_pruna_lora.py   # Helper script to download 8-step LoRA
-│   └── start.sh                 # Startup script for Master service
-├── satellite-worker/            # Distributed Satellite Node
-│   └── worker.py                # Autonomous worker with lease & outbox support
-├── h3-video-editor/             # Video generation interface
-├── AGENTS.md                    # Operational history, deployment notes & rules
-└── README.md                    # Project documentation
-```
-
----
-
-## Models & Dependencies
-
-### Required Models in ComfyUI (`models/`):
+### 1. 🖼️ Image Generation & Editing
 - `diffusion_models/qwen-image-2.1-UC-Q4_K_M.gguf` (~4.3 GB)
+- `diffusion_models/qwen-rapid-nsfw-v9.0-Q3_K_S.gguf` (~3.8 GB)
+- `loras/p_qwen_image_2.1_8step_v0.1.safetensors` (Pruna 8-step acceleration)
 - `text_encoders/qwen3vl_8b_int8_convrot.safetensors` (~8.8 GB)
-- `vae/qwen_image_2.1_vae_bf16.safetensors` (~645 MB)
-- `loras/p_qwen_image_2.1_8step_v0.1.safetensors` (~321 MB)
+- `text_encoders/Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf` + `mmproj-Q8_0.gguf`
+- `vae/qwen_image_2.1_vae_bf16.safetensors`
 
-### Required Custom Nodes in ComfyUI (`custom_nodes/`):
-- `ComfyUI-GGUF`
-- `ComfyUI-MiniMax-H3-Image-Studio`
+### 2. 🎬 Video Generation (Text/Image-to-Video + Audio)
+- `diffusion_models/fastvideo_fasth3_8step_v2_pruned_int8_convrot.safetensors`
+- `diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors`
+- `text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors` & `int8_convrot`
+- `loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors`
+- `vae/minimax_h3_video_vae_int8_convrot.safetensors` & `fp16`
+- `vae/minimax_h3_audio_vae_fp32.safetensors` (synchronized video audio)
+
+### 3. 🧠 Large Language Model (LLM)
+- `models/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-IQ2_M.gguf` (~10.3 GB)
+- `models/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-FastMTP-32K.gguf` (~900 MB draft model)
+- Engine: Custom-built `llama.cpp` (`llama-server`) with Flash-Attention & Speculative Decoding.
+
+### 4. 🎙️ Neural Voice (TTS) & Speech-to-Text (STT)
+- **Kokoro-82M**: `hexgrad/Kokoro-82M` via FastAPI sidecar (supports Portuguese `pf_dora`, `pm_alex`, `pm_santa` and English `af_heart`, etc.).
+- **Whisper.cpp**: `ggml-small.bin` with CUDA acceleration for automatic speech recognition and subtitle timestamps.
+
+---
+
+## 🤖 Agentic Skill (`qwenswarm-api`) & CLI Client
+
+The repository includes a ready-to-use skill and command-line client for AI Agents (such as Antigravity / Gemini CLI) and headless scripts:
+
+Location: [`.agents/skills/qwenswarm-api/scripts/client.py`](.agents/skills/qwenswarm-api/scripts/client.py)
+
+```bash
+# Check GPU VRAM and Arbiter Status
+.agents/skills/qwenswarm-api/scripts/client.py gpu
+
+# Check active batch queue summary
+.agents/skills/qwenswarm-api/scripts/client.py queue status
+
+# Priority image edit
+.agents/skills/qwenswarm-api/scripts/client.py image \
+  --prompt "change dress to red silk" \
+  --image input.jpg \
+  --out result.png
+
+# Generate a 4-second video (auto-pauses queue and resumes when done)
+.agents/skills/qwenswarm-api/scripts/client.py video \
+  --prompt "cinematic drone shot over ocean waves at sunset" \
+  --seconds 4 \
+  --out video.mp4
+
+# Chat or prompt enhancement with Qwen 27B LLM
+.agents/skills/qwenswarm-api/scripts/client.py llm \
+  --prompt "Aprimore este prompt para imagem fotorrealista: mulher caminhando na praia"
+
+# Fast voice synthesis (<1s)
+.agents/skills/qwenswarm-api/scripts/client.py tts \
+  --text "Olá! O cluster QwenSwarm está totalmente operacional." \
+  --voice pf_dora \
+  --out speech.wav
+
+# Transcribe audio with Whisper
+.agents/skills/qwenswarm-api/scripts/client.py transcribe \
+  --file speech.wav \
+  --verbose
+```
+
+---
+
+## Complete API Reference (`http://192.168.2.183:3000`)
+
+### 🎨 Image Studio
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/api/edit` | `POST` | Priority image edit (highest queue priority). Accepts JSON or multipart. |
+| `/api/edit/{id}` | `GET` | Poll execution status (`pending`, `running`, `done`, `error`). |
+| `/api/edit/{id}/image`| `GET` | Direct binary download of the generated PNG. |
+| `/api/edit/{id}` | `DELETE` | Cancels pending task or removes output file, metadata, and queue entry. |
+| `/api/batch` | `POST` | Enqueues pool images × presets with guardrails. |
+| `/api/pool` | `GET/POST` | List or upload images to the persistent pool. |
+| `/api/queue` | `GET` | Windowed queue summary (running, pending, leased, done). |
+| `/api/queue/pause` | `POST` | Manually pauses the queue. |
+| `/api/queue/resume` | `POST` | Resumes queue processing. |
+| `/api/worker/lease` | `POST` | Leases tasks to authenticated satellite workers. |
+| `/api/worker/complete`| `POST` | Receives completed image and metadata from satellite workers. |
+
+### 🎬 Video Studio
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/api/video/status` | `GET` | Checks readiness of video diffusion UNet, CLIP, and VAEs. |
+| `/api/video/generate` | `POST` | Triggers T2V or I2V video generation (pauses image queue automatically). |
+| `/api/video/job/{id}` | `GET` | Polls video job status and result video URL. |
+| `/api/video/gallery` | `GET` | Lists all generated `.mp4` video files with metadata. |
+| `/api/video/file/{fn}`| `GET` | Streams video file with HTTP Range support. |
+| `/api/video/file/{fn}`| `DELETE` | Permanently deletes a generated video file. |
+
+### 💬 LLM Studio
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/api/llm/status` | `GET` | Returns GPU Arbiter state, model details, and idle timeout status. |
+| `/api/llm/chat` | `POST` | OpenAI-compatible chat completion. Purges ComfyUI VRAM and pauses image queue. |
+| `/api/llm/release` | `POST` | Manually shuts down `llama-server` and resumes the image queue immediately. |
+
+### 🎙️ Voice & Audio (TTS / STT)
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/api/tts/voices` | `GET` | Lists available neural voices (PT-BR and EN-US). |
+| `/api/tts` | `POST` | Synthesizes speech returning raw WAV audio in <1 second. |
+| `/api/transcribe/status`| `GET` | Checks Whisper model availability and supported languages. |
+| `/api/transcribe` | `POST` | Transcribes audio/video files via Whisper.cpp (accepts multipart or JSON). |
+
+### ⚙️ System & GPU Telemetry
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/api/system/gpu` | `GET` | Live telemetry (`vram_used_mb`, `vram_total_mb`, `gpu_util_pct`, `temperature_c`, `mode`). |
+| `/api/system/gpu/action`| `POST` | Manual actions (`pause`, `resume`, `free`, `release_llm`). |
 
 ---
 
 ## Getting Started
 
-### 1. Master Server Setup
-
-1. Start ComfyUI on the master machine (`127.0.0.1:8188`):
-   ```bash
-   python main.py --listen 127.0.0.1 --port 8188
-   ```
-
-2. Start the master editor server:
-   ```bash
-   cd qwen-editor
-   python app.py
-   ```
-   The UI will be available at `http://<MASTER_IP>:3000`.
-
-### 2. Satellite Worker Setup
-
-1. Configure ComfyUI on the satellite node with low-VRAM optimizations:
-   ```bash
-   python main.py --listen 127.0.0.1 --port 8188 --lowvram --vram-headroom 1.2 --reserve-vram 0.8
-   ```
-
-2. Run the satellite worker pointing to the master server:
-   ```bash
-   cd satellite-worker
-   export MASTER_URL="http://192.168.2.183:3000"
-   export WORKER_ID="satellite-node-01"
-   export BATCH_SIZE=15
-   python worker.py
-   ```
-
-### 3. Running as Systemd Services
-
-On Linux machines, services can be managed via systemd:
-
-**/etc/systemd/system/comfyui.service**
-```ini
-[Unit]
-Description=ComfyUI Service
-After=network.target
-
-[Service]
-Type=simple
-User=<USER>
-WorkingDirectory=/home/<USER>/ComfyUI
-ExecStart=/home/<USER>/ComfyUI/venv/bin/python main.py --listen 127.0.0.1 --port 8188 --lowvram --vram-headroom 1.2 --reserve-vram 0.8
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-**/etc/systemd/system/qwen-satellite.service**
-```ini
-[Unit]
-Description=Qwen Satellite Worker Service
-After=network.target comfyui.service
-Wants=comfyui.service
-
-[Service]
-Type=simple
-User=<USER>
-WorkingDirectory=/home/<USER>/satellite_worker
-ExecStart=/home/<USER>/ComfyUI/venv/bin/python -u /home/<USER>/satellite_worker/worker.py
-Restart=always
-RestartSec=10
-Environment="MASTER_URL=http://192.168.2.183:3000"
-Environment="COMFY_URL=http://127.0.0.1:8188"
-Environment="WORKER_ID=satellite-01"
-Environment="BATCH_SIZE=15"
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable and start services:
+### Master Server Setup
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable comfyui.service qwen-satellite.service
-sudo systemctl start comfyui.service qwen-satellite.service
+# 1. Start ComfyUI
+python main.py --listen 127.0.0.1 --port 8188
+
+# 2. Start QwenSwarm Master Studio
+cd qwen-editor
+python app.py
 ```
+Web Dashboard will be live at `http://<MASTER_IP>:3000`.
 
----
-
-## API Reference
-
-### Priority Image Editing
-- **`POST /api/edit`**
-  Submits an image edit with maximum priority into the queue.
-  - Supports `multipart/form-data` and `application/json`.
-  - Parameters: `prompt`, `image` / `image_base64` or `pool_id`, and optional `references` / `ref_image`.
-  - Returns: `{ "id": "<item_id>", "status": "pending", "image_url": "...", "status_url": "..." }`
-
-- **`GET /api/edit/<id>`**
-  Poll item execution status (`pending`, `running`, `done`, `error`) and retrieve output image metadata.
-
-- **`GET /api/edit/<id>/image`**
-  Direct binary download of the generated PNG (`image/png`).
-
-- **`DELETE /api/edit/<id>`**
-  Cancels a pending task or removes generated output and metadata. Supports batch deletion via `?ids=id1,id2`.
-
-### Queue Management
-- **`GET /api/queue`**: Returns windowed active queue status, running item details, and summary stats.
-- **`POST /api/queue/pause`**: Pauses queue dispatching.
-- **`POST /api/queue/resume`**: Resumes queue processing.
-- **`POST /api/queue/cancel`**: Cancels all pending tasks in the current batch.
-- **`DELETE /api/queue`**: Cleans up finished and cancelled tasks.
-
-### Distributed Worker Endpoints
-- **`POST /api/worker/lease`**: Leases a block of $N$ pending items to an authenticated worker node with an automatic timeout.
-- **`POST /api/worker/complete`**: Submits a completed image and metadata from a satellite node.
-- **`POST /api/worker/fail`**: Re-queues a failed task for retry.
+### Satellite Worker Setup
+```bash
+cd satellite-worker
+export MASTER_URL="http://192.168.2.183:3000"
+export WORKER_ID="predator-3060"
+export BATCH_SIZE=15
+python worker.py
+```
 
 ---
 
