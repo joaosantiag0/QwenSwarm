@@ -102,6 +102,7 @@ How QwenSwarm works and how we operate it (implementation history as of October 
 ### Master Server
 - Directory: `/home/user/qwen-editor/`. ComfyUI at `/home/user/ComfyUI/` (API `127.0.0.1:8188`).
 - Service: `systemctl --user restart qwen-editor` (unit `qwen-editor.service`, `enabled`, `ExecStart=start.sh`). Does **not** have sudo; use `sshpass` + `systemctl --user`.
+- **AI Toolkit by Ostris (`ostris.com`)**: Directory `/home/user/ai-toolkit/`. Port **8675** (`http://192.168.2.183:8675` e Tailscale `http://100.89.150.119:8675`). Unit `ai-toolkit.service` (`systemctl --user {status|restart|stop} ai-toolkit`). PyTorch 2.13.0 + CUDA 13.0, Next.js Web UI para treinamento de LoRAs e fine-tuning.
 - Deploy: Server backup (`cp app.py app.py.bak-<ts>`) → `scp app.py index.html` → restart service → verify `curl /api/queue`.
 - **Python**: ComfyUI virtualenv is **Python 3.12** — `app.py` uses `cgi` (deprecated/removed in 3.13+). Do not upgrade to 3.13 without replacing multipart form parsing.
 - Paths in `app.py` are relative to `WEB_ROOT` (script directory) or `/home/user/ComfyUI` — no hardcoded macOS paths.
