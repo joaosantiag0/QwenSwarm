@@ -1149,7 +1149,12 @@ def apply_pruna_to_qwen21_prompt(api_prompt: dict, prefix: str, seed: int) -> No
     ks_key = f"{prefix}458"
     if ks_key in api_prompt:
         del api_prompt[ks_key]
-    api_prompt[f"{prefix}450"] = {
+    lora_key = f"{prefix}950"
+    sampler_select_key = f"{prefix}980"
+    sigmas_key = f"{prefix}981"
+    sampler_custom_key = f"{prefix}982"
+
+    api_prompt[lora_key] = {
         "class_type": "LoraLoaderModelOnly",
         "inputs": {
             "model": [f"{prefix}451", 0],
@@ -1159,16 +1164,16 @@ def apply_pruna_to_qwen21_prompt(api_prompt: dict, prefix: str, seed: int) -> No
     }
     cache_key = f"{prefix}469"
     if cache_key in api_prompt:
-        api_prompt[cache_key]["inputs"]["model"] = [f"{prefix}450", 0]
-    api_prompt[f"{prefix}480"] = {
+        api_prompt[cache_key]["inputs"]["model"] = [lora_key, 0]
+    api_prompt[sampler_select_key] = {
         "class_type": "KSamplerSelect",
         "inputs": {"sampler_name": "euler"},
     }
-    api_prompt[f"{prefix}481"] = {
+    api_prompt[sigmas_key] = {
         "class_type": "ManualSigmas",
         "inputs": {"sigmas": PRUNA_SIGMAS_8},
     }
-    api_prompt[f"{prefix}482"] = {
+    api_prompt[sampler_custom_key] = {
         "class_type": "SamplerCustom",
         "inputs": {
             "model": [cache_key, 0],
@@ -1177,12 +1182,12 @@ def apply_pruna_to_qwen21_prompt(api_prompt: dict, prefix: str, seed: int) -> No
             "cfg": 1.0,
             "positive": [f"{prefix}474", 0],
             "negative": [f"{prefix}474", 1],
-            "sampler": [f"{prefix}480", 0],
-            "sigmas": [f"{prefix}481", 0],
+            "sampler": [sampler_select_key, 0],
+            "sigmas": [sigmas_key, 0],
             "latent_image": [f"{prefix}468", 0],
         },
     }
-    api_prompt[f"{prefix}457"]["inputs"]["samples"] = [f"{prefix}482", 0]
+    api_prompt[f"{prefix}457"]["inputs"]["samples"] = [sampler_custom_key, 0]
 
 
 def build_prompt_qwen21(

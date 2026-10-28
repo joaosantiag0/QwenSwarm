@@ -361,7 +361,12 @@ def build_qwen_workflow_prompt(
 
     # Pruna LoRA 8-step setup
     seed = subgraph_widget_map["seed"]
-    api_prompt[f"{prefix}450"] = {
+    lora_key = f"{prefix}950"
+    sampler_select_key = f"{prefix}980"
+    sigmas_key = f"{prefix}981"
+    sampler_custom_key = f"{prefix}982"
+
+    api_prompt[lora_key] = {
         "class_type": "LoraLoaderModelOnly",
         "inputs": {
             "model": [f"{prefix}451", 0],
@@ -369,27 +374,27 @@ def build_qwen_workflow_prompt(
             "strength_model": 1.0,
         },
     }
-    api_prompt[f"{prefix}469"]["inputs"]["model"] = [f"{prefix}450", 0]
-    api_prompt[f"{prefix}480"] = {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}}
-    api_prompt[f"{prefix}481"] = {
+    api_prompt[f"{prefix}469"]["inputs"]["model"] = [lora_key, 0]
+    api_prompt[sampler_select_key] = {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}}
+    api_prompt[sigmas_key] = {
         "class_type": "ManualSigmas",
         "inputs": {"sigmas": PRUNA_SIGMAS_8},
     }
-    api_prompt[f"{prefix}482"] = {
+    api_prompt[sampler_custom_key] = {
         "class_type": "SamplerCustom",
         "inputs": {
             "model": [f"{prefix}469", 0],
             "positive": [f"{prefix}474", 0],
             "negative": [f"{prefix}474", 1],
-            "sampler": [f"{prefix}480", 0],
-            "sigmas": [f"{prefix}481", 0],
+            "sampler": [sampler_select_key, 0],
+            "sigmas": [sigmas_key, 0],
             "latent_image": [f"{prefix}468", 0],
             "add_noise": True,
             "noise_seed": seed,
             "cfg": 1.0,
         },
     }
-    api_prompt[f"{prefix}457"]["inputs"]["samples"] = [f"{prefix}482", 0]
+    api_prompt[f"{prefix}457"]["inputs"]["samples"] = [sampler_custom_key, 0]
     return api_prompt
 
 
