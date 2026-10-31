@@ -3985,6 +3985,23 @@ class Handler(BaseHTTPRequestHandler):
                     {"ok": True, "updated": updated, "priority": None if clear else prio, "queue": queue_view()}
                 )
 
+            if parsed.path == "/api/queue/retry-errors":
+                count = 0
+                with queue_lock:
+                    for it in queue_items.values():
+                        if it.get("status") == "error":
+                            it["status"] = "pending"
+                            it["error"] = None
+                            it["retries"] = 0
+                            it["prompt_id"] = None
+                            it["started_at"] = None
+                            it["finished_at"] = None
+                            count += 1
+                    if count:
+                        save_queue_locked()
+                        queue_lock.notify_all()
+                return self._json({"ok": True, "reset_count": count, "queue": queue_view()})
+
             if parsed.path in ("/api/queue/pause", "/api/queue/resume", "/api/queue/cancel"):
                 global queue_paused
                 with queue_lock:

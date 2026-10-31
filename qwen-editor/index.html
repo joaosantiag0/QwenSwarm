@@ -922,6 +922,7 @@
             <button type="button" id="queue-pause-btn" class="btn-secondary">Pause</button>
             <button type="button" id="queue-cancel-btn" class="btn-danger">Cancel pending</button>
             <button type="button" id="queue-clear-btn" class="btn-secondary">Clear completed</button>
+            <button type="button" id="queue-retry-btn" class="btn-secondary" style="color: #ffb86c;">Retry errors</button>
           </div>
         </div>
 
@@ -2050,6 +2051,7 @@
     const queueListEl = document.getElementById('queue-list');
     const queuePauseBtn = document.getElementById('queue-pause-btn');
     const queueClearBtn = document.getElementById('queue-clear-btn');
+    const queueRetryBtn = document.getElementById('queue-retry-btn');
     let queueTimer = null;
     let queueBusy = false;
     let queuePausedState = false;
@@ -2319,6 +2321,14 @@
       const res = await fetch('/api/queue', { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       renderQueuePanel(data.queue || { summary: {}, items: [] });
+    });
+    queueRetryBtn.addEventListener('click', async () => {
+      const res = await fetch('/api/queue/retry-errors', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (data && data.ok) {
+        setStatus(`Reset ${data.reset_count} error item(s) back to pending.`, 'done');
+      }
+      await pollQueue();
     });
 
     async function downloadAllImages() {
