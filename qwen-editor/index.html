@@ -795,6 +795,241 @@
       width: 100%;
       max-width: 400px;
     }
+
+    /* Cluster Management styles */
+    .cluster-overview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .cluster-stat-box {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.1rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .cluster-stat-box::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 3px;
+      background: var(--accent);
+      opacity: 0.6;
+    }
+    .stat-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .stat-val {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.2;
+    }
+    .stat-sub {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .cluster-actions-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0.85rem 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .cluster-nodes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 1.25rem;
+    }
+    .cluster-node-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      transition: all 0.25s ease;
+      position: relative;
+    }
+    .cluster-node-card:hover {
+      border-color: #3e465a;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+    }
+    .cluster-node-card.is-paused {
+      border-color: rgba(255, 184, 108, 0.4);
+      background: linear-gradient(180deg, rgba(255,184,108,0.03) 0%, var(--card) 100%);
+    }
+    .cluster-node-card.is-offline {
+      opacity: 0.65;
+    }
+    .node-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.75rem;
+    }
+    .node-card-title {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .node-card-icon {
+      font-size: 1.8rem;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .node-title-name {
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: var(--text);
+    }
+    .node-title-sub {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .node-badge {
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.25rem 0.65rem;
+      border-radius: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      white-space: nowrap;
+    }
+    .node-badge-online {
+      background: rgba(62, 207, 142, 0.15);
+      color: #3ecf8e;
+      border: 1px solid rgba(62, 207, 142, 0.3);
+    }
+    .node-badge-paused {
+      background: rgba(255, 184, 108, 0.15);
+      color: #ffb86c;
+      border: 1px solid rgba(255, 184, 108, 0.3);
+    }
+    .node-badge-offline {
+      background: rgba(144, 154, 175, 0.15);
+      color: #909aaf;
+      border: 1px solid rgba(144, 154, 175, 0.3);
+    }
+    .node-details {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      background: rgba(15, 17, 23, 0.6);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+    }
+    .node-detail-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+    }
+    .detail-label {
+      color: var(--muted);
+    }
+    .detail-val {
+      font-weight: 600;
+      color: var(--text);
+    }
+    .detail-val.highlight {
+      color: #8aa4ff;
+    }
+    .node-gpu-box {
+      background: rgba(15, 17, 23, 0.4);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.65rem 0.85rem;
+    }
+    .node-bar-bg {
+      height: 6px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .node-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.3s;
+    }
+    .node-card-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: auto;
+      padding-top: 0.25rem;
+    }
+    .btn-node-pause {
+      flex: 1;
+      background: rgba(255, 184, 108, 0.15);
+      border: 1px solid rgba(255, 184, 108, 0.35);
+      color: #ffb86c;
+      font-weight: 600;
+      font-size: 0.85rem;
+      padding: 0.6rem 0.85rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-node-pause:hover {
+      background: rgba(255, 184, 108, 0.25);
+      border-color: #ffb86c;
+      color: #fff;
+    }
+    .btn-node-resume {
+      flex: 1;
+      background: rgba(62, 207, 142, 0.15);
+      border: 1px solid rgba(62, 207, 142, 0.35);
+      color: #3ecf8e;
+      font-weight: 600;
+      font-size: 0.85rem;
+      padding: 0.6rem 0.85rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-node-resume:hover {
+      background: rgba(62, 207, 142, 0.25);
+      border-color: #3ecf8e;
+      color: #fff;
+    }
+    .btn-node-secondary {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 0.85rem;
+      padding: 0.6rem 0.85rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-node-secondary:hover {
+      background: rgba(255,255,255,0.12);
+      border-color: #4b5266;
+    }
   </style>
 </head>
 <body>
@@ -823,6 +1058,7 @@
         <button type="button" class="suite-tab-btn" data-tab="tab-video">🎬 Vídeo (MiniMax H3)</button>
         <button type="button" class="suite-tab-btn" data-tab="tab-llm">💬 LLM (Qwen 27B)</button>
         <button type="button" class="suite-tab-btn" data-tab="tab-voice">🎙️ Voz (Kokoro TTS)</button>
+        <button type="button" class="suite-tab-btn" data-tab="tab-cluster">🌐 Cluster & Nós (<span id="cluster-nav-badge">--</span>)</button>
       </nav>
     </div>
 
@@ -923,6 +1159,7 @@
             <button type="button" id="queue-cancel-btn" class="btn-danger">Cancel pending</button>
             <button type="button" id="queue-clear-btn" class="btn-secondary">Clear completed</button>
             <button type="button" id="queue-retry-btn" class="btn-secondary" style="color: #ffb86c;">Retry errors</button>
+            <button type="button" class="btn-secondary" onclick="switchTab('tab-cluster')">🌐 Gerenciar Nós</button>
           </div>
         </div>
 
@@ -1160,6 +1397,80 @@
         </div>
       </div>
     </div>
+
+    <!-- TAB 5: CLUSTER & NÓS DISTRIBUÍDOS -->
+    <div id="tab-cluster" class="suite-tab-pane">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:1rem; margin-bottom:1.5rem">
+        <div>
+          <h1 style="margin-bottom:0.25rem">🌐 Cluster & Nós Distribuídos</h1>
+          <p class="sub" style="margin-bottom:0">Controle individual de execução da fila para cada computador conectado (Master Server e Notebooks Satélites).</p>
+        </div>
+        <div style="display:flex; align-items:center; gap:0.5rem">
+          <span style="font-size:0.8rem; color:var(--muted)">Sincronização em tempo real (3s)</span>
+          <button type="button" class="btn-secondary" onclick="loadClusterNodes()" style="padding:0.4rem 0.75rem; font-size:0.85rem">🔄 Atualizar</button>
+        </div>
+      </div>
+
+      <!-- Resumo Geral de Métricas -->
+      <div class="cluster-overview-grid">
+        <div class="cluster-stat-box">
+          <div class="stat-title">Nós Conectados</div>
+          <div class="stat-val" id="cluster-total-nodes">--</div>
+          <div class="stat-sub"><span id="cluster-paused-nodes" style="color:#ffb86c">0</span> nó(s) pausado(s)</div>
+        </div>
+
+        <div class="cluster-stat-box">
+          <div class="stat-title">Tarefas Ativas Agora</div>
+          <div class="stat-val" id="cluster-active-items" style="color:#8aa4ff">--</div>
+          <div class="stat-sub">Trabalhos em renderização</div>
+        </div>
+
+        <div class="cluster-stat-box">
+          <div class="stat-title">Fila Pendente</div>
+          <div class="stat-val" id="cluster-queue-pending">--</div>
+          <div class="stat-sub">Itens aguardando processamento</div>
+        </div>
+
+        <div class="cluster-stat-box">
+          <div class="stat-title">Total Concluído (Cluster)</div>
+          <div class="stat-val" id="cluster-total-completed" style="color:#3ecf8e">--</div>
+          <div class="stat-sub">Imagens geradas nesta sessão</div>
+        </div>
+      </div>
+
+      <!-- Barra de Ações Globais -->
+      <div class="cluster-actions-toolbar">
+        <span style="font-weight:600; font-size:0.9rem; margin-right:0.5rem">Controle Global:</span>
+        <button type="button" class="btn-node-resume" style="flex:none" onclick="clusterAction('resume-all')">
+          ▶️ Iniciar Todos os Nós
+        </button>
+        <button type="button" class="btn-node-pause" style="flex:none" onclick="clusterAction('pause-all')">
+          ⏸️ Pausar Todos os Nós
+        </button>
+        <button type="button" class="btn-node-secondary" onclick="freeComfyVRAM()">
+          🧹 Liberar VRAM Master
+        </button>
+        <div style="flex:1"></div>
+        <button type="button" class="btn-secondary" onclick="switchTab('tab-image')" style="font-size:0.85rem">
+          🎨 Ver Fila no Studio de Imagem →
+        </button>
+      </div>
+
+      <!-- Grid com Cards Individuais de Cada Computador -->
+      <div class="cluster-nodes-grid" id="cluster-nodes-grid">
+        <div style="color:var(--muted); padding:2rem; text-align:center; grid-column:1/-1">Carregando nós do cluster...</div>
+      </div>
+
+      <!-- Caixa de Ajuda / Informações de Arquitetura -->
+      <div class="card" style="margin-top:2rem; background:rgba(15,17,23,0.5); border:1px solid var(--border)">
+        <label>💡 Como funciona o cluster distribuído?</label>
+        <div style="font-size:0.85rem; color:var(--muted); line-height:1.6; display:flex; flex-direction:column; gap:0.5rem">
+          <p>• <strong>Master Server (RTX 3060 12GB):</strong> Executa a fila localmente via ComfyUI. Pausar o Master para o worker local sem cancelar a renderização em andamento e sem afetar os satélites.</p>
+          <p>• <strong>Worker Satélite (ex: Notebook Predator 3060 6GB):</strong> Requisita blocos de tarefas pendentes via API HTTP. Ao pausar um satélite aqui no painel, ele conclui o bloco atual e não recebe novos itens até ser retomado.</p>
+          <p>• <strong>Resiliência Offline:</strong> Se o Master reiniciar ou ficar offline temporariamente, os satélites continuam renderizando em buffer local (<code style="color:#8aa4ff">outbox/</code>) e entregam os resultados assim que a conexão restabelecer.</p>
+        </div>
+      </div>
+    </div> <!-- /tab-cluster -->
   </div>
 
   <div id="lightbox" class="lightbox" hidden tabindex="-1">
@@ -2506,6 +2817,20 @@
       if (tabId === 'tab-video') {
         loadVideoGallery();
         populateVideoPoolSelect();
+      } else if (tabId === 'tab-cluster') {
+        loadClusterNodes();
+        if (!clusterPollTimer) {
+          clusterPollTimer = setInterval(loadClusterNodes, 3000);
+        }
+      }
+      if (tabId !== 'tab-cluster' && clusterPollTimer) {
+        clearInterval(clusterPollTimer);
+        clusterPollTimer = null;
+      }
+      if (window.history && window.history.replaceState) {
+        if (tabId === 'tab-cluster') window.history.replaceState(null, '', '/cluster');
+        else if (tabId === 'tab-image') window.history.replaceState(null, '', '/');
+        else window.history.replaceState(null, '', '#' + tabId);
       }
     }
 
@@ -2979,9 +3304,200 @@
       switchTab('tab-llm');
     }
 
+    // ==========================================
+    // --- Cluster & Satellite Nodes Controller ---
+    // ==========================================
+    let clusterPollTimer = null;
+
+    async function loadClusterNodes() {
+      try {
+        const res = await fetch('/api/cluster/nodes');
+        if (!res.ok) return;
+        const data = await res.json();
+        renderClusterUI(data);
+      } catch (err) {
+        console.error('Falha ao carregar status do cluster:', err);
+      }
+    }
+
+    function renderClusterUI(data) {
+      if (!data || !data.ok) return;
+      const summary = data.summary || {};
+      const nodes = data.nodes || [];
+
+      // Update badge in nav
+      const badge = document.getElementById('cluster-nav-badge');
+      if (badge) {
+        badge.textContent = `${summary.online_nodes || 0}/${summary.total_nodes || 0} online`;
+        badge.style.color = summary.paused_nodes > 0 ? '#ffb86c' : '#3ecf8e';
+      }
+
+      // Summary metrics
+      const elNodes = document.getElementById('cluster-total-nodes');
+      if (elNodes) elNodes.textContent = `${summary.online_nodes || 0} / ${summary.total_nodes || 0}`;
+      const elPaused = document.getElementById('cluster-paused-nodes');
+      if (elPaused) elPaused.textContent = summary.paused_nodes || 0;
+      const elPending = document.getElementById('cluster-queue-pending');
+      if (elPending) elPending.textContent = fmtNum(summary.queue_pending || 0);
+      const elActive = document.getElementById('cluster-active-items');
+      if (elActive) elActive.textContent = summary.active_items || 0;
+      const elCompleted = document.getElementById('cluster-total-completed');
+      if (elCompleted) elCompleted.textContent = fmtNum(summary.total_completed || 0);
+
+      // Render nodes grid
+      const grid = document.getElementById('cluster-nodes-grid');
+      if (!grid) return;
+
+      if (!nodes.length) {
+        grid.innerHTML = '<div style="color:var(--muted); padding:2rem; text-align:center; grid-column:1/-1">Nenhum nó registrado no momento.</div>';
+        return;
+      }
+
+      grid.innerHTML = nodes.map(n => {
+        const isMaster = (n.type === 'master' || n.id === 'master');
+        const isPaused = Boolean(n.paused);
+        const isOnline = n.status === 'online' || n.status === 'active' || (isMaster && !isPaused);
+        
+        let statusBadgeClass = 'node-badge-online';
+        let statusText = '🟢 Ativo';
+        if (isPaused) {
+          statusBadgeClass = 'node-badge-paused';
+          statusText = '⏸️ Pausado';
+        } else if (!isOnline && !isMaster) {
+          statusBadgeClass = 'node-badge-offline';
+          statusText = '⚪ Offline';
+        }
+
+        const icon = isMaster ? '🖥️' : (n.id.includes('predator') || n.id.includes('laptop') || n.id.includes('notebook') ? '💻' : '⚡');
+        const lastSeenText = isMaster ? 'Localhost (Ativo)' : (n.last_seen_s < 10 ? 'Agora mesmo' : (n.last_seen_s < 120 ? `Há ${n.last_seen_s}s` : `Há ${Math.round(n.last_seen_s/60)} min`));
+        const lastFinishedText = n.last_completed ? `${n.last_completed.slice(0, 24)}...` : 'Nenhum recente';
+
+        let gpuSection = '';
+        if (isMaster && n.gpu) {
+          const vramPct = Math.min(100, Math.round((n.gpu.vram_used_mb / (n.gpu.vram_total_mb || 12288)) * 100));
+          const vramGb = (n.gpu.vram_used_mb / 1024).toFixed(1);
+          const totalGb = ((n.gpu.vram_total_mb || 12288) / 1024).toFixed(1);
+          gpuSection = `
+            <div class="node-gpu-box">
+              <div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:4px; color:var(--muted)">
+                <span>VRAM (${vramGb} / ${totalGb} GB)</span>
+                <span>${n.gpu.temperature_c}°C · ${n.gpu.gpu_util_pct}% GPU</span>
+              </div>
+              <div class="node-bar-bg"><div class="node-bar-fill" style="width: ${vramPct}%; background:${vramPct > 90 ? '#ff5555' : 'var(--accent)'}"></div></div>
+            </div>
+          `;
+        }
+
+        return `
+          <div class="cluster-node-card ${isPaused ? 'is-paused' : ''} ${!isOnline && !isMaster ? 'is-offline' : ''}">
+            <div class="node-card-head">
+              <div class="node-card-title">
+                <span class="node-card-icon">${icon}</span>
+                <div>
+                  <div class="node-title-name">${escapeHtml(n.name)}</div>
+                  <div class="node-title-sub">${isMaster ? 'Servidor Principal (Coordenação + GPU)' : 'Worker Satélite Autônomo'} · <span style="font-family:monospace">${escapeHtml(n.ip || '127.0.0.1')}</span></div>
+                </div>
+              </div>
+              <span class="node-badge ${statusBadgeClass}">${statusText}</span>
+            </div>
+
+            <div class="node-details">
+              <div class="node-detail-row">
+                <span class="detail-label">Em Execução Agora</span>
+                <span class="detail-val highlight">${n.active_items} tarefa(s)</span>
+              </div>
+              <div class="node-detail-row">
+                <span class="detail-label">Total Concluído</span>
+                <span class="detail-val">${fmtNum(n.total_completed)} imagens</span>
+              </div>
+              <div class="node-detail-row">
+                <span class="detail-label">Último Contato</span>
+                <span class="detail-val">${lastSeenText}</span>
+              </div>
+              <div class="node-detail-row">
+                <span class="detail-label">Último Arquivo</span>
+                <span class="detail-val" style="font-size:0.75rem; color:var(--muted); font-family:monospace">${escapeHtml(lastFinishedText)}</span>
+              </div>
+            </div>
+
+            ${gpuSection}
+
+            <div class="node-card-actions">
+              ${isPaused ? `
+                <button type="button" class="btn-node-resume" onclick="toggleNodePause('${escapeHtml(n.id)}', false)">
+                  ▶️ Iniciar Fila Neste Nó
+                </button>
+              ` : `
+                <button type="button" class="btn-node-pause" onclick="toggleNodePause('${escapeHtml(n.id)}', true)">
+                  ⏸️ Pausar Fila Neste Nó
+                </button>
+              `}
+              ${isMaster ? `
+                <button type="button" class="btn-node-secondary" onclick="freeComfyVRAM()" title="Limpar caches de modelo no ComfyUI">
+                  🧹 Free VRAM
+                </button>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function toggleNodePause(nodeId, pause) {
+      const action = pause ? 'pause' : 'resume';
+      try {
+        const res = await fetch(`/api/cluster/node/${encodeURIComponent(nodeId)}/${action}`, { method: 'POST' });
+        const data = await res.json();
+        if (data && data.ok) {
+          renderClusterUI(data);
+          pollGPUStatus();
+        }
+      } catch (err) {
+        alert('Erro ao alterar status do nó: ' + err.message);
+      }
+    }
+
+    async function clusterAction(action) {
+      try {
+        let endpoint = '';
+        if (action === 'pause-all') endpoint = '/api/cluster/pause-all';
+        else if (action === 'resume-all') endpoint = '/api/cluster/resume-all';
+        else return;
+
+        const res = await fetch(endpoint, { method: 'POST' });
+        const data = await res.json();
+        if (data && data.ok) {
+          renderClusterUI(data);
+          pollGPUStatus();
+        }
+      } catch (err) {
+        alert('Erro ao aplicar ação no cluster: ' + err.message);
+      }
+    }
+
+    async function freeComfyVRAM() {
+      try {
+        const res = await fetch('/api/system/gpu/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'free' })
+        });
+        await res.json();
+        pollGPUStatus();
+        loadClusterNodes();
+      } catch (err) {
+        alert('Erro ao liberar VRAM: ' + err.message);
+      }
+    }
+
     loadGallery();
     loadPool();
     startQueuePolling();
+    loadClusterNodes();
+
+    if (window.location.hash === '#tab-cluster' || window.location.pathname.startsWith('/cluster')) {
+      switchTab('tab-cluster');
+    }
   </script>
 </body>
 </html>

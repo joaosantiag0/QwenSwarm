@@ -2275,8 +2275,265 @@ def update_queue_item(item_id: str, **fields) -> None:
         queue_lock.notify_all()
 
 
-def worker_lease_items(worker_id: str, count: int = 20) -> list[dict]:
+# ---------------------------------------------------------------------------
+# Cluster Coordinator & Node Registry (Master + Satellites)
+# ---------------------------------------------------------------------------
+CLUSTER_NODES_FILE = STAGING_DIR / "cluster_nodes.json"
+cluster_lock = threading.Lock()
+cluster_nodes: dict[str, dict] = {}
+
+
+def load_cluster_nodes() -> dict[str, dict]:
+    global cluster_nodes
+    with cluster_lock:
+        if CLUSTER_NODES_FILE.is_file():
+            try:
+                with CLUSTER_NODES_FILE.open("r", encoding="utf-8") as f:
+                    cluster_nodes = json.load(f)
+            except Exception:
+                cluster_nodes = {}
+
+        if "master" not in cluster_nodes:
+            cluster_nodes["master"] = {
+                "id": "master",
+                "name": "Master Server (RTX 3060 12GB)",
+                "type": "master",
+                "ip": "127.0.0.1",
+                "paused": queue_paused,
+                "created_at": time.time(),
+                "last_seen": time.time(),
+                "total_completed": 0,
+                "total_errors": 0,
+            }
+        cluster_nodes["master"]["paused"] = queue_paused
+
+        # Descobre nós que já rodaram ou possuem lease no queue_items
+        with queue_lock:
+            for it in queue_items.values():
+                lt = it.get("leased_to") or it.get("completed_by")
+                if lt and lt != "master" and lt not in cluster_nodes:
+                    name = "Notebook Predator (RTX 3060 6GB)" if lt == "predator-3060" else lt.replace("-", " ").title()
+                    cluster_nodes[lt] = {
+                        "id": lt,
+                        "name": name,
+                        "type": "satellite",
+                        "ip": "192.168.2.191" if lt == "predator-3060" else "",
+                        "paused": False,
+                        "created_at": float(it.get("leased_at") or time.time()),
+                        "last_seen": float(it.get("leased_at") or time.time()),
+                        "total_completed": 0,
+                        "total_errors": 0,
+                    }
+        save_cluster_nodes_locked()
+        return cluster_nodes
+
+
+def save_cluster_nodes_locked() -> None:
+    try:
+        CLUSTER_NODES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = CLUSTER_NODES_FILE.with_suffix(".json.tmp")
+        with tmp.open("w", encoding="utf-8") as f:
+            json.dump(cluster_nodes, f, ensure_ascii=False, indent=2)
+        tmp.replace(CLUSTER_NODES_FILE)
+    except Exception as e:
+        print(f"[Cluster] Erro ao salvar cluster_nodes: {e}")
+
+
+def cluster_register_activity(worker_id: str, client_ip: str | None = None) -> None:
+    if not worker_id:
+        return
+    now = time.time()
+    with cluster_lock:
+        node = cluster_nodes.get(worker_id)
+        if node is None:
+            if worker_id == "predator-3060":
+                name = "Notebook Predator (RTX 3060 6GB)"
+            elif "colab" in worker_id.lower():
+                name = "Google Colab GPU"
+            else:
+                name = worker_id.replace("-", " ").replace("_", " ").title()
+            node = {
+                "id": worker_id,
+                "name": name,
+                "type": "satellite",
+                "ip": client_ip or "",
+                "paused": False,
+                "created_at": now,
+                "last_seen": now,
+                "total_completed": 0,
+                "total_errors": 0,
+            }
+            cluster_nodes[worker_id] = node
+        else:
+            node["last_seen"] = now
+            if client_ip and client_ip not in ("127.0.0.1", "localhost"):
+                node["ip"] = client_ip
+        save_cluster_nodes_locked()
+
+
+def cluster_is_node_paused(worker_id: str) -> bool:
+    if worker_id == "master":
+        return queue_paused
+    with cluster_lock:
+        node = cluster_nodes.get(worker_id)
+        return bool(node.get("paused")) if node else False
+
+
+def cluster_record_completion(worker_id: str, filename: str) -> None:
+    if not worker_id:
+        return
+    now = time.time()
+    with cluster_lock:
+        node = cluster_nodes.get(worker_id)
+        if node:
+            node["total_completed"] = int(node.get("total_completed") or 0) + 1
+            node["last_completed"] = filename
+            node["last_completed_at"] = now
+            save_cluster_nodes_locked()
+
+
+def cluster_record_failure(worker_id: str, error: str) -> None:
+    if not worker_id:
+        return
+    now = time.time()
+    with cluster_lock:
+        node = cluster_nodes.get(worker_id)
+        if node:
+            node["total_errors"] = int(node.get("total_errors") or 0) + 1
+            node["last_error"] = str(error)
+            node["last_error_at"] = now
+            save_cluster_nodes_locked()
+
+
+def cluster_set_node_pause(worker_id: str, paused: bool) -> bool:
+    global queue_paused
+    if worker_id == "master":
+        with queue_lock:
+            queue_paused = paused
+            queue_lock.notify_all()
+        with cluster_lock:
+            if "master" in cluster_nodes:
+                cluster_nodes["master"]["paused"] = paused
+                save_cluster_nodes_locked()
+        if not paused:
+            ensure_queue_worker()
+        return True
+
+    with cluster_lock:
+        node = cluster_nodes.get(worker_id)
+        if not node:
+            return False
+        node["paused"] = paused
+        save_cluster_nodes_locked()
+    return True
+
+
+def cluster_set_all_pause(paused: bool) -> dict:
+    global queue_paused
+    with queue_lock:
+        queue_paused = paused
+        queue_lock.notify_all()
+    with cluster_lock:
+        for node in cluster_nodes.values():
+            node["paused"] = paused
+        save_cluster_nodes_locked()
+    if not paused:
+        ensure_queue_worker()
+    return cluster_get_nodes_view()
+
+
+def cluster_get_nodes_view() -> dict:
+    now = time.time()
+    leased_counts = {}
+    master_running = 0
+    pending_count = 0
+    with queue_lock:
+        for it in queue_items.values():
+            st = it.get("status")
+            lt = it.get("leased_to")
+            if st == "pending":
+                pending_count += 1
+            elif st == "leased" and lt:
+                leased_counts[lt] = leased_counts.get(lt, 0) + 1
+            elif st == "running":
+                master_running += 1
+
+    gpu_meta = {}
+    try:
+        gpu_meta = gpu_arbiter.get_status()
+    except Exception:
+        pass
+
+    with cluster_lock:
+        nodes_list = []
+        for wid, n in cluster_nodes.items():
+            is_master = (n.get("type") == "master" or wid == "master")
+            paused = queue_paused if is_master else bool(n.get("paused"))
+            last_seen = float(n.get("last_seen") or 0)
+            seen_ago = int(now - last_seen) if last_seen > 0 else 999999
+
+            if paused:
+                status = "paused"
+            elif is_master:
+                status = "active" if _worker_thread is not None and _worker_thread.is_alive() and not queue_paused else "idle"
+            else:
+                status = "online" if seen_ago < 120 else "offline"
+
+            active_items = master_running if is_master else leased_counts.get(wid, 0)
+
+            node_dict = {
+                "id": wid,
+                "name": n.get("name") or wid,
+                "type": "master" if is_master else "satellite",
+                "ip": n.get("ip") or ("127.0.0.1" if is_master else ""),
+                "status": status,
+                "paused": paused,
+                "active_items": active_items,
+                "total_completed": int(n.get("total_completed") or 0),
+                "total_errors": int(n.get("total_errors") or 0),
+                "last_seen_s": seen_ago,
+                "last_completed": n.get("last_completed"),
+                "last_completed_at": n.get("last_completed_at"),
+            }
+            if is_master:
+                node_dict["gpu"] = {
+                    "vram_used_mb": gpu_meta.get("vram_used_mb", 0),
+                    "vram_total_mb": gpu_meta.get("vram_total_mb", 12288),
+                    "gpu_util_pct": gpu_meta.get("gpu_util_pct", 0),
+                    "temperature_c": gpu_meta.get("temperature_c", 0),
+                    "mode": gpu_meta.get("mode", "qwen"),
+                }
+            nodes_list.append(node_dict)
+
+        nodes_list.sort(key=lambda x: (
+            0 if x["type"] == "master" else 1,
+            0 if x["status"] in ("active", "online") else (1 if x["status"] == "paused" else 2),
+            x["name"]
+        ))
+
+        total_online = sum(1 for n in nodes_list if n["status"] in ("active", "online", "idle"))
+        total_paused = sum(1 for n in nodes_list if n["paused"])
+
+        return {
+            "ok": True,
+            "nodes": nodes_list,
+            "summary": {
+                "total_nodes": len(nodes_list),
+                "online_nodes": total_online,
+                "paused_nodes": total_paused,
+                "active_items": master_running + sum(leased_counts.values()),
+                "total_completed": sum(int(n.get("total_completed") or 0) for n in cluster_nodes.values()),
+                "queue_pending": pending_count,
+                "queue_total": len(queue_items),
+            }
+        }
+
+
+def worker_lease_items(worker_id: str, count: int = 20, client_ip: str | None = None) -> list[dict]:
     """Reserva até `count` itens pendentes para um worker satélite (ex: notebook 3060)."""
+    cluster_register_activity(worker_id, client_ip)
+    if cluster_is_node_paused(worker_id):
+        return []
     leased = []
     now = time.time()
     with queue_lock:
@@ -2325,36 +2582,47 @@ def worker_lease_items(worker_id: str, count: int = 20) -> list[dict]:
     return leased
 
 
-def worker_complete_item(item_id: str, filename: str, finished_at: float | None = None) -> bool:
+def worker_complete_item(item_id: str, filename: str, finished_at: float | None = None, client_ip: str | None = None) -> bool:
     """Registra conclusão de um item gerado por um worker satélite."""
     finished = finished_at or time.time()
+    worker_id = None
     with queue_lock:
         it = queue_items.get(item_id)
         if it is None:
             return False
+        worker_id = it.get("leased_to") or "satellite"
         it["status"] = "done"
         it["images"] = [filename]
         it["finished_at"] = finished
+        it["completed_by"] = worker_id
         it.pop("leased_to", None)
         it.pop("leased_at", None)
         sync_queue_meta(it, [filename], finished)
         save_queue_locked()
         queue_lock.notify_all()
+    if worker_id:
+        cluster_record_completion(worker_id, filename)
+    if client_ip and worker_id:
+        cluster_register_activity(worker_id, client_ip)
     return True
 
 
 def worker_fail_item(item_id: str, error: str = "") -> bool:
     """Devolve item para pending em caso de erro no worker satélite."""
+    worker_id = None
     with queue_lock:
         it = queue_items.get(item_id)
         if it is None:
             return False
+        worker_id = it.get("leased_to")
         it["status"] = "pending"
         it["error"] = error or "Worker failure"
         it.pop("leased_to", None)
         it.pop("leased_at", None)
         save_queue_locked()
         queue_lock.notify_all()
+    if worker_id:
+        cluster_record_failure(worker_id, error)
     return True
 
 
@@ -2540,8 +2808,11 @@ def finish_queue_item(item: dict) -> None:
     finished = time.time()
     it = queue_items.get(item_id)
     if it is not None:
+        it["completed_by"] = "master"
         sync_queue_meta(it, filenames, finished)
-    update_queue_item(item_id, status="done", images=filenames, finished_at=finished)
+    update_queue_item(item_id, status="done", images=filenames, finished_at=finished, completed_by="master")
+    if filenames:
+        cluster_record_completion("master", filenames[0])
 
 
 def fail_queue_item(item_id: str, exc: Exception) -> None:
@@ -2559,6 +2830,7 @@ def fail_queue_item(item_id: str, exc: Exception) -> None:
             it["status"] = "error"
             it["error"] = str(exc)
             it["finished_at"] = time.time()
+            cluster_record_failure("master", str(exc))
         save_queue_locked()
         queue_lock.notify_all()
 
@@ -3061,7 +3333,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
-        if path in ("/", "/index.html"):
+        if path in ("/", "/index.html", "/cluster"):
             body = render_index_html()
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -3072,6 +3344,9 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         # --- Unified AI Suite Endpoints (GPU, Video, LLM, TTS) ---
+        if path == "/api/cluster/nodes":
+            return self._json(cluster_get_nodes_view())
+
         if path == "/api/system/gpu":
             return self._json(gpu_arbiter.get_status())
 
@@ -3913,16 +4188,18 @@ class Handler(BaseHTTPRequestHandler):
                 )
 
             if parsed.path == "/api/worker/lease":
+                client_ip = self.client_address[0] if hasattr(self, "client_address") and self.client_address else "127.0.0.1"
                 data = read_json_body(self)
                 worker_id = str(data.get("worker_id") or "satellite_worker").strip()
                 try:
                     count = min(100, max(1, int(data.get("count") or 20)))
                 except (TypeError, ValueError):
                     count = 20
-                items = worker_lease_items(worker_id, count)
+                items = worker_lease_items(worker_id, count, client_ip)
                 return self._json({"ok": True, "worker_id": worker_id, "count": len(items), "items": items})
 
             if parsed.path == "/api/worker/complete":
+                client_ip = self.client_address[0] if hasattr(self, "client_address") and self.client_address else "127.0.0.1"
                 ctype_wc = self.headers.get("Content-Type", "")
                 if "multipart/form-data" in ctype_wc:
                     form = cgi.FieldStorage(
@@ -3945,7 +4222,7 @@ class Handler(BaseHTTPRequestHandler):
                         finished_at = float(form_text(form, "finished_at") or time.time())
                     except (ValueError, TypeError):
                         finished_at = time.time()
-                    ok = worker_complete_item(item_id, fn, finished_at)
+                    ok = worker_complete_item(item_id, fn, finished_at, client_ip)
                     return self._json({"ok": ok, "id": item_id, "filename": fn})
                 else:
                     return self._json({"error": "Envie multipart/form-data com o arquivo da imagem"}, HTTPStatus.BAD_REQUEST)
@@ -3956,6 +4233,21 @@ class Handler(BaseHTTPRequestHandler):
                 error = str(data.get("error") or "")
                 ok = worker_fail_item(item_id, error)
                 return self._json({"ok": ok, "id": item_id})
+
+            # --- Cluster Management Endpoints ---
+            if parsed.path.startswith("/api/cluster/node/") and (parsed.path.endswith("/pause") or parsed.path.endswith("/resume")):
+                parts = parsed.path.strip("/").split("/")
+                if len(parts) >= 5:
+                    node_id = parts[3]
+                    action = parts[4]
+                    cluster_set_node_pause(node_id, action == "pause")
+                    return self._json(cluster_get_nodes_view())
+
+            if parsed.path == "/api/cluster/pause-all":
+                return self._json(cluster_set_all_pause(True))
+
+            if parsed.path == "/api/cluster/resume-all":
+                return self._json(cluster_set_all_pause(False))
 
             if parsed.path == "/api/queue/prioritize":
                 data = read_json_body(self)
@@ -4016,6 +4308,10 @@ class Handler(BaseHTTPRequestHandler):
                                 it["finished_at"] = time.time()
                     save_queue_locked()
                     queue_lock.notify_all()
+                with cluster_lock:
+                    if "master" in cluster_nodes:
+                        cluster_nodes["master"]["paused"] = queue_paused
+                        save_cluster_nodes_locked()
                 return self._json({"ok": True, "paused": queue_paused, "queue": queue_view()})
 
             if parsed.path == "/api/regenerate-stale":
@@ -4177,6 +4473,7 @@ def main():
     with prompts_lock:
         ensure_prompt_timestamps(ensure_prompt_ids(load_raw_prompts()))
     recover_queue_on_boot()
+    load_cluster_nodes()
     ensure_queue_worker()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"Qwen Editor em http://0.0.0.0:{PORT}")
