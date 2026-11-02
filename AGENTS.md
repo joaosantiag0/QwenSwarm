@@ -46,15 +46,15 @@ How QwenSwarm works and how we operate it (implementation history as of October 
   - 🎨 **Image Studio** (Qwen 2.1 Image Edit & Batch Queue)
   - 🎬 **Video Studio** (MiniMax H3 / FastVideo Trim 8-step Text-to-Video and Image-to-Video with audio)
   - 💬 **LLM Studio** (Qwen 3.8 27B Uncensored via `llama.cpp` with FastMTP speculative decoding)
-  - 🎙️ **Voice Studio** (Kokoro-82M TTS neural voice synthesis in <1s per clip)
+  - 🎙️ **Voice Studio** (Kokoro-82M TTS neural voice synthesis in <1s per clip & F5-TTS PT-BR zero-shot voice cloning)
 - **Automatic GPU Arbitration**: The Master GPU (RTX 3060 12GB) cannot run two heavy generative models concurrently without OOM. The `GPUArbiter` coordinates access:
-  - When a user triggers **Video generation** or **LLM Chat**:
+  - When a user triggers **Video generation**, **LLM Chat**, or **F5-TTS Voice Cloning**:
     1. Signals the background Qwen image queue to **pause** (`queue_paused = True`).
     2. Waits for any currently rendering image to finish cleanly (<35s) so no compute is wasted.
-    3. Calls ComfyUI `POST /free` to purge VRAM cache if switching to LLM (`llama.cpp`) or swapping models.
-    4. Executes the requested task on the GPU.
+    3. Calls ComfyUI `POST /free` to purge VRAM cache if switching to LLM (`llama.cpp`), F5-TTS (`cuda`), or swapping models.
+    4. Executes the requested generative task on the GPU.
   - When the task completes (or LLM reaches a 4-minute idle timeout / user clicks "Liberar GPU"):
-    1. Shuts down `llama-server` / frees video workflow.
+    1. Shuts down `llama-server` / frees video workflow / releases F5-TTS task.
     2. Resumes the Qwen Image queue automatically (`queue_paused = False`).
 - **Satellite Node Immunity**: Pausing the Master GPU for Video/LLM does **not** stop satellite nodes (`predator-3060`); they continue pulling leases and rendering on their own laptop GPU in parallel.
 
@@ -87,9 +87,16 @@ How QwenSwarm works and how we operate it (implementation history as of October 
 - `POST /api/llm/chat` — OpenAI-compatible chat completion (`messages`, `system_prompt`, `temperature`, `max_tokens`). Automatically pauses Qwen image queue and purges ComfyUI VRAM.
 - `POST /api/llm/release` — Manually shuts down `llama-server` and resumes the Qwen image queue immediately.
 
-### 🎙️ Voice & Audio (Kokoro-82M & Whisper)
-- `GET /api/tts/voices` — Lists available neural voices (PT-BR and EN-US).
-- `POST /api/tts` — Synthesizes speech (`text`, `voice`, `speed`) returning raw WAV audio in <1 second.
+### 🎙️ Voice & Audio (Kokoro-82M, F5-TTS PT-BR & Whisper)
+- `GET /api/tts/voices` — Lists available neural voices (Kokoro PT-BR/EN-US) and registered TTS engines (`kokoro`, `f5`).
+- `GET /api/tts/status` — Checks readiness of Kokoro sidecar, F5-TTS model (`firstpixel/F5-TTS-pt-br`), and CUDA acceleration support.
+- `POST /api/tts` · `POST /api/tts/f5` — Synthesizes speech returning raw WAV audio. Supports both JSON and `multipart/form-data`:
+  - `engine`: `kokoro` (default) or `f5` (F5-TTS high-fidelity / zero-shot cloning).
+  - `voice`: Kokoro voice ID (`pf_dora`, `pm_alex`, etc.) or F5-TTS identifier.
+  - `ref_audio`: Uploaded audio clip file or base64 string for zero-shot voice cloning.
+  - `ref_text`: Optional transcription of the reference audio (automatically transcribed via Whisper.cpp if omitted).
+  - `device`: `cuda` (automatically pauses Qwen queue and purges VRAM via `GPUArbiter`) or `cpu`.
+  - `speed`: Playback speed factor (0.8 - 1.4).
 - `GET /api/transcribe/status` — Checks Whisper model availability and supported languages.
 - `POST /api/transcribe` — Transcribes audio/video files via Whisper.cpp (accepts multipart `audio`/`file` or JSON `audio_base64`, with optional `lang`). Returns full text, language detection, and segment timestamps.
 

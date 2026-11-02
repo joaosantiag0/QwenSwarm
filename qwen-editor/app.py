@@ -8,6 +8,7 @@ import hashlib
 import html as html_module
 import json
 import math
+import os
 import random
 import re
 import shutil
@@ -200,6 +201,7 @@ class GPUArbiter:
     MODE_VIDEO = "video"
     MODE_LLM = "llm"
     MODE_VOICE = "voice"
+    MODE_F5 = "f5_tts"
 
     def __init__(self):
         self.lock = threading.Lock()
@@ -229,6 +231,7 @@ class GPUArbiter:
             "temperature_c": temp_c,
             "llm_running": self.llm_proc is not None and self.llm_proc.poll() is None,
             "video_active": self.video_active,
+            "f5_active": self.active_mode in ("f5_tts", "voice"),
         }
 
     def _get_nvidia_stats(self) -> tuple[int, int, int, int]:
@@ -288,7 +291,7 @@ class GPUArbiter:
 
             self.pause_qwen_and_wait_idle(timeout_s=timeout_s)
 
-            if mode in ("llm", "video"):
+            if mode in ("llm", "video", "f5_tts", "voice"):
                 self.free_comfyui_vram()
 
             self.active_mode = mode
@@ -306,6 +309,8 @@ class GPUArbiter:
             elif mode == "video":
                 self.video_active = False
                 self.free_comfyui_vram()
+            elif mode in ("voice", "f5_tts"):
+                pass
 
             self.active_mode = "qwen"
             self.task_description = "Fila de Imagens ativa"
@@ -722,6 +727,90 @@ def whisper_transcribe(audio_path: Path, lang: str = "auto") -> dict:
         "language": detected_lang,
         "segments": transcriptions,
     }
+
+
+# --- Voice Engine: F5-TTS PT-BR (Zero-Shot Voice Cloning) ---
+F5_CLI_BIN = Path("/home/user/f5-venv/bin/f5-tts_infer-cli")
+F5_MODEL_PTBR = Path("/home/user/f5_models/pt-br/model_last.safetensors")
+F5_DEFAULT_REF_AUDIO = Path("/home/user/sample_ptbr.wav")
+F5_DEFAULT_REF_TEXT = "este é um teste de áudio em português brasileiro."
+
+
+def f5_synthesize(
+    text: str,
+    ref_audio_path: Path | None = None,
+    ref_text: str | None = None,
+    speed: float = 1.0,
+    device: str = "cuda",
+) -> bytes:
+    """
+    Sintetiza áudio de alta fidelidade e clonagem de voz usando F5-TTS PT-BR.
+    Coordena com o GPUArbiter para pausar a fila de imagens e liberar VRAM caso execute na GPU (CUDA).
+    """
+    cli_bin = F5_CLI_BIN if F5_CLI_BIN.is_file() else Path(shutil.which("f5-tts_infer-cli") or "")
+    if not cli_bin.is_file() or not F5_MODEL_PTBR.is_file():
+        raise FileNotFoundError("Binário do F5-TTS ou modelo PT-BR não encontrado no servidor")
+
+    clean_text = text.strip()
+    if not clean_text:
+        raise ValueError("Texto para síntese está vazio")
+
+    ref_audio = ref_audio_path if (ref_audio_path and ref_audio_path.is_file()) else F5_DEFAULT_REF_AUDIO
+    if not ref_audio.is_file():
+        raise FileNotFoundError("Áudio de referência não encontrado")
+
+    clean_ref_text = (ref_text or "").strip()
+    if not clean_ref_text:
+        if ref_audio == F5_DEFAULT_REF_AUDIO:
+            clean_ref_text = F5_DEFAULT_REF_TEXT
+        else:
+            try:
+                tr = whisper_transcribe(ref_audio, lang="pt")
+                clean_ref_text = tr.get("text", "")
+            except Exception as ex:
+                print(f"[F5-TTS] Aviso: falha ao transcrever áudio de referência com Whisper: {ex}")
+                clean_ref_text = ""
+
+    out_path = Path(f"/tmp/f5_synth_{uuid.uuid4().hex[:8]}.wav")
+    use_cuda = device.lower() == "cuda"
+
+    if use_cuda:
+        gpu_arbiter.acquire_for_task("f5_tts", "Síntese F5-TTS com Clonagem de Voz", timeout_s=45.0)
+
+    try:
+        cmd = [
+            str(cli_bin),
+            "-m", "F5TTS_Base",
+            "-p", str(F5_MODEL_PTBR),
+            "-r", str(ref_audio),
+            "-s", clean_ref_text.lower(),
+            "-t", clean_text.lower(),
+            "-o", str(out_path.parent),
+            "-w", out_path.name,
+            "--speed", str(speed),
+            "--device", "cuda" if use_cuda else "cpu",
+        ]
+        env = os.environ.copy()
+        env["PATH"] = f"/home/user/f5-venv/bin:/home/user/ai-toolkit/.ffmpeg/bin:{env.get('PATH', '')}"
+        env["LD_LIBRARY_PATH"] = f"/home/user/ai-toolkit/.ffmpeg/lib:{env.get('LD_LIBRARY_PATH', '')}"
+
+        res = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=180,
+            env=env,
+        )
+        if not out_path.is_file():
+            err_msg = res.stderr[-500:] if res.stderr else (res.stdout[-500:] if res.stdout else "Erro desconhecido")
+            raise RuntimeError(f"F5-TTS falhou ao gerar áudio: {err_msg}")
+
+        return out_path.read_bytes()
+    finally:
+        out_path.unlink(missing_ok=True)
+        if use_cuda:
+            gpu_arbiter.release_from_task("f5_tts")
 
 
 def field_has_upload(field) -> bool:
@@ -3385,7 +3474,33 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(gpu_arbiter.get_status())
 
         if path == "/api/tts/voices":
-            return self._json({"voices": KOKORO_VOICES})
+            return self._json({
+                "voices": KOKORO_VOICES,
+                "engines": [
+                    {"id": "kokoro", "name": "Kokoro-82M (Ultra-rápido <1s)", "type": "neural_tts"},
+                    {"id": "f5", "name": "F5-TTS PT-BR (Clonagem Zero-Shot)", "type": "voice_clone"},
+                ],
+                "f5_tts": {
+                    "ready": F5_CLI_BIN.is_file() and F5_MODEL_PTBR.is_file(),
+                    "model": "firstpixel/F5-TTS-pt-br",
+                    "cuda_supported": True,
+                },
+            })
+
+        if path == "/api/tts/status":
+            return self._json({
+                "kokoro": {
+                    "ready": True,
+                    "endpoint": KOKORO_API,
+                    "voices": KOKORO_VOICES,
+                },
+                "f5_tts": {
+                    "ready": F5_CLI_BIN.is_file() and F5_MODEL_PTBR.is_file(),
+                    "model": "firstpixel/F5-TTS-pt-br (1.28 GB)",
+                    "default_ref": "Dora PT-BR (3.0s)",
+                    "cuda_supported": True,
+                },
+            })
 
         if path == "/api/transcribe/status":
             return self._json({
@@ -3694,6 +3809,8 @@ class Handler(BaseHTTPRequestHandler):
                     gpu_arbiter.free_comfyui_vram()
                 elif action == "release_llm":
                     gpu_arbiter.release_from_task("llm")
+                elif action in ("release_f5", "release_voice"):
+                    gpu_arbiter.release_from_task("f5_tts")
                 return self._json(gpu_arbiter.get_status())
 
             if parsed.path == "/api/video/generate":
@@ -3791,15 +3908,68 @@ class Handler(BaseHTTPRequestHandler):
                 gpu_arbiter.release_from_task("llm")
                 return self._json({"ok": True, "message": "GPU liberada para a fila de imagens"})
 
-            if parsed.path == "/api/tts":
-                data = read_json_body(self)
-                text = str(data.get("text") or "").strip()
-                voice = str(data.get("voice") or "pf_dora").strip()
-                speed = float(data.get("speed") or 1.0)
-                if not text:
-                    return self._json({"error": "Texto para fala é obrigatório"}, HTTPStatus.BAD_REQUEST)
+            if parsed.path in ("/api/tts", "/api/tts/f5"):
+                ctype = self.headers.get("Content-Type", "")
+                temp_ref: Path | None = None
                 try:
-                    audio_bytes = tts_synthesize(text, voice, speed)
+                    if "multipart/form-data" in ctype:
+                        form = cgi.FieldStorage(
+                            fp=self.rfile,
+                            headers=self.headers,
+                            environ={"REQUEST_METHOD": "POST", "CONTENT_TYPE": ctype},
+                        )
+                        text = form_text(form, "text") or ""
+                        engine = form_text(form, "engine") or ("f5" if parsed.path == "/api/tts/f5" else "kokoro")
+                        voice = form_text(form, "voice") or ("f5_ptbr" if engine == "f5" else "pf_dora")
+                        speed = float(form_text(form, "speed") or 1.0)
+                        device = form_text(form, "device") or "cuda"
+                        ref_text = form_text(form, "ref_text") or None
+
+                        upload = None
+                        if "ref_audio" in form:
+                            upload = form["ref_audio"]
+                        elif "audio" in form:
+                            upload = form["audio"]
+                        elif "file" in form:
+                            upload = form["file"]
+
+                        if field_has_upload(upload):
+                            temp_ref = Path(f"/tmp/ref_upload_{uuid.uuid4().hex[:8]}.wav")
+                            with open(temp_ref, "wb") as f_out:
+                                shutil.copyfileobj(upload.file, f_out)
+                            engine = "f5"
+                    else:
+                        data = read_json_body(self)
+                        text = str(data.get("text") or "").strip()
+                        engine = str(data.get("engine") or "").strip().lower()
+                        if not engine:
+                            engine = "f5" if parsed.path == "/api/tts/f5" else "kokoro"
+                        voice = str(data.get("voice") or "").strip()
+                        speed = float(data.get("speed") or 1.0)
+                        device = str(data.get("device") or "cuda").strip().lower()
+                        ref_text = str(data.get("ref_text") or "").strip() if data.get("ref_text") else None
+
+                        ref_b64 = str(data.get("ref_audio_base64") or data.get("ref_audio") or "")
+                        if ref_b64 and len(ref_b64) > 100:
+                            import base64
+                            temp_ref = Path(f"/tmp/ref_upload_{uuid.uuid4().hex[:8]}.wav")
+                            temp_ref.write_bytes(base64.b64decode(ref_b64))
+                            engine = "f5"
+
+                    if not text:
+                        return self._json({"error": "Texto para fala é obrigatório"}, HTTPStatus.BAD_REQUEST)
+
+                    if engine == "f5" or voice.startswith("f5"):
+                        audio_bytes = f5_synthesize(
+                            text=text,
+                            ref_audio_path=temp_ref,
+                            ref_text=ref_text,
+                            speed=speed,
+                            device=device,
+                        )
+                    else:
+                        audio_bytes = tts_synthesize(text, voice=voice or "pf_dora", speed=speed)
+
                     self.send_response(HTTPStatus.OK)
                     self.send_header("Content-Type", "audio/wav")
                     self.send_header("Content-Length", str(len(audio_bytes)))
@@ -3808,7 +3978,12 @@ class Handler(BaseHTTPRequestHandler):
                     self.wfile.write(audio_bytes)
                     return
                 except Exception as e:
+                    import traceback
+                    traceback.print_exc()
                     return self._json({"error": f"Erro síntese TTS: {e}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
+                finally:
+                    if temp_ref and temp_ref.is_file():
+                        temp_ref.unlink(missing_ok=True)
 
             if parsed.path == "/api/transcribe":
                 ctype = self.headers.get("Content-Type", "")

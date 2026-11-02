@@ -546,6 +546,7 @@
     .gpu-pill.mode-qwen { background: rgba(62, 207, 142, 0.15); color: #3ecf8e; border: 1px solid rgba(62, 207, 142, 0.3); }
     .gpu-pill.mode-video { background: rgba(255, 170, 0, 0.15); color: #ffaa00; border: 1px solid rgba(255, 170, 0, 0.3); }
     .gpu-pill.mode-llm { background: rgba(160, 100, 255, 0.15); color: #c084fc; border: 1px solid rgba(160, 100, 255, 0.3); }
+    .gpu-pill.mode-voice { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
     .gpu-pill.mode-paused { background: rgba(255, 107, 107, 0.15); color: #ff6b6b; border: 1px solid rgba(255, 107, 107, 0.3); }
     .gpu-dot {
       width: 7px;
@@ -1325,27 +1326,29 @@
       </div>
     </div>
 
-    <!-- TAB 4: VOZ (KOKORO TTS) -->
+    <!-- TAB 4: VOZ (KOKORO TTS & F5-TTS CLONING) -->
     <div id="tab-voice" class="suite-tab-pane">
-      <h1>Voice Studio — Kokoro-82M</h1>
-      <p class="sub">Síntese de fala neural ultra-rápida (&lt;1s por áudio). Suporte nativo a Português do Brasil e Inglês.</p>
+      <h1>Voice Studio — Síntese Neural &amp; Clonagem de Voz</h1>
+      <p class="sub">Síntese ultra-rápida com Kokoro-82M (&lt;1s) e clonagem de voz de alta fidelidade com F5-TTS PT-BR integrado ao GPUArbiter.</p>
 
       <div class="voice-grid">
         <div class="card">
           <label for="voice-text">Texto para Falar</label>
           <textarea id="voice-text" placeholder="Digite ou cole aqui o texto que a IA deve falar com entonação natural..."></textarea>
 
-          <div class="row">
+          <div class="row" style="margin-top:0.75rem">
             <div class="field">
-              <label for="voice-select">Voz</label>
-              <select id="voice-select" class="select-input">
-                <option value="pf_dora">🇧🇷 Dora (Português - Feminina)</option>
-                <option value="pm_alex">🇧🇷 Alex (Português - Masculina)</option>
-                <option value="pm_santa">🇧🇷 Santa (Português - Grave / Papai Noel)</option>
-                <option value="af_heart">🇺🇸 Heart (Inglês - Feminina Suave)</option>
-                <option value="af_bella">🇺🇸 Bella (Inglês - Feminina)</option>
-                <option value="am_adam">🇺🇸 Adam (Inglês - Masculina)</option>
-                <option value="am_michael">🇺🇸 Michael (Inglês - Narrador)</option>
+              <label for="voice-engine">Motor de Síntese</label>
+              <select id="voice-engine" class="select-input" onchange="toggleVoiceEngine()">
+                <option value="kokoro" selected>⚡ Kokoro-82M (Ultra-rápido &lt;1s)</option>
+                <option value="f5">💎 F5-TTS PT-BR (Clonagem de Voz Zero-Shot &amp; HiFi)</option>
+              </select>
+            </div>
+            <div class="field-narrow" id="voice-device-wrap" style="display:none">
+              <label for="voice-device">Hardware</label>
+              <select id="voice-device" class="select-input">
+                <option value="cuda" selected>🚀 CUDA (RTX 3060)</option>
+                <option value="cpu">💻 CPU (Multi-thread)</option>
               </select>
             </div>
             <div class="field-narrow">
@@ -1359,7 +1362,46 @@
             </div>
           </div>
 
-          <div class="row" style="margin-top:1.25rem">
+          <!-- Seção Específica: Kokoro Voices -->
+          <div id="wrap-kokoro-voices" class="row" style="margin-top:0.75rem">
+            <div class="field">
+              <label for="voice-select">Voz Predefinida</label>
+              <select id="voice-select" class="select-input">
+                <option value="pf_dora">🇧🇷 Dora (Português - Feminina)</option>
+                <option value="pm_alex">🇧🇷 Alex (Português - Masculina)</option>
+                <option value="pm_santa">🇧🇷 Santa (Português - Grave / Papai Noel)</option>
+                <option value="af_heart">🇺🇸 Heart (Inglês - Feminina Suave)</option>
+                <option value="af_bella">🇺🇸 Bella (Inglês - Feminina)</option>
+                <option value="am_adam">🇺🇸 Adam (Inglês - Masculina)</option>
+                <option value="am_michael">🇺🇸 Michael (Inglês - Narrador)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Seção Específica: F5-TTS Voice Cloning -->
+          <div id="wrap-f5-cloning" style="display:none; margin-top:0.75rem; padding:0.85rem; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px">
+            <label style="font-weight:600; color:var(--text); margin-bottom:0.4rem; display:block">🧬 Configuração da Voz de Referência (Clonagem)</label>
+            <div class="row">
+              <div class="field">
+                <label for="f5-ref-mode">Fonte da Voz</label>
+                <select id="f5-ref-mode" class="select-input" onchange="toggleF5RefMode()">
+                  <option value="default" selected>🇧🇷 Voz Padrão Brasileira (Dora)</option>
+                  <option value="custom">🎙️ Clonar Meu Áudio (Upload de 3 a 10s)</option>
+                </select>
+              </div>
+            </div>
+
+            <div id="wrap-f5-custom-audio" style="display:none; margin-top:0.6rem">
+              <label for="f5-ref-file">Arquivo de Áudio (.wav, .mp3, .m4a)</label>
+              <input type="file" id="f5-ref-file" accept="audio/*" class="select-input" style="padding:0.35rem">
+
+              <label for="f5-ref-text" style="margin-top:0.5rem">Transcrição do Áudio de Referência (Opcional)</label>
+              <input type="text" id="f5-ref-text" placeholder="Deixe em branco para o Whisper auto-transcrever a referência...">
+              <p class="hint" style="margin-top:0.3rem">Dica: Áudios curtos (3 a 8 segundos) sem ruído de fundo produzem a melhor clonagem.</p>
+            </div>
+          </div>
+
+          <div class="row" style="margin-top:1.25rem; align-items:center">
             <button type="button" id="btn-generate-voice" class="btn-queue" onclick="generateVoice()">🎙️ Sintetizar Áudio</button>
             <span id="voice-status-msg" style="font-size:0.85rem; color:var(--muted)"></span>
           </div>
@@ -2869,6 +2911,9 @@
         } else if (st.mode === 'llm') {
           pill.classList.add('mode-llm');
           pillText.textContent = '💬 GPU: Qwen 27B Chat';
+        } else if (st.mode === 'f5_tts' || st.mode === 'voice') {
+          pill.classList.add('mode-voice');
+          pillText.textContent = '🎙️ GPU: F5-TTS Voz Clonada';
         }
 
         // VRAM Bar
@@ -3213,9 +3258,32 @@
     }
 
     // --- Voice Studio Controller ---
+    function toggleVoiceEngine() {
+      const engine = document.getElementById('voice-engine').value;
+      const wrapKokoro = document.getElementById('wrap-kokoro-voices');
+      const wrapF5 = document.getElementById('wrap-f5-cloning');
+      const deviceWrap = document.getElementById('voice-device-wrap');
+
+      if (engine === 'f5') {
+        wrapKokoro.style.display = 'none';
+        wrapF5.style.display = 'block';
+        deviceWrap.style.display = 'block';
+      } else {
+        wrapKokoro.style.display = 'flex';
+        wrapF5.style.display = 'none';
+        deviceWrap.style.display = 'none';
+      }
+    }
+
+    function toggleF5RefMode() {
+      const mode = document.getElementById('f5-ref-mode').value;
+      const customWrap = document.getElementById('wrap-f5-custom-audio');
+      customWrap.style.display = mode === 'custom' ? 'block' : 'none';
+    }
+
     async function generateVoice() {
+      const engine = document.getElementById('voice-engine')?.value || 'kokoro';
       const text = document.getElementById('voice-text').value.trim();
-      const voice = document.getElementById('voice-select').value;
       const speed = parseFloat(document.getElementById('voice-speed').value);
       const btn = document.getElementById('btn-generate-voice');
       const statusMsg = document.getElementById('voice-status-msg');
@@ -3226,14 +3294,55 @@
       }
 
       btn.disabled = true;
-      statusMsg.textContent = 'Sintetizando áudio no Kokoro-82M...';
+      if (engine === 'f5') {
+        statusMsg.textContent = 'Coordenando GPU com GPUArbiter e gerando no F5-TTS...';
+      } else {
+        statusMsg.textContent = 'Sintetizando áudio no Kokoro-82M...';
+      }
 
       try {
-        const res = await fetch('/api/tts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, voice, speed }),
-        });
+        let res;
+        if (engine === 'f5') {
+          const mode = document.getElementById('f5-ref-mode')?.value || 'default';
+          const device = document.getElementById('voice-device')?.value || 'cuda';
+          const refFile = document.getElementById('f5-ref-file')?.files?.[0];
+          const refText = document.getElementById('f5-ref-text')?.value?.trim() || '';
+
+          if (mode === 'custom' && refFile) {
+            const formData = new FormData();
+            formData.append('text', text);
+            formData.append('engine', 'f5');
+            formData.append('speed', speed);
+            formData.append('device', device);
+            formData.append('ref_audio', refFile);
+            if (refText) formData.append('ref_text', refText);
+
+            res = await fetch('/api/tts', {
+              method: 'POST',
+              body: formData,
+            });
+          } else {
+            res = await fetch('/api/tts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                text,
+                engine: 'f5',
+                speed,
+                device,
+                ref_text: refText || undefined,
+              }),
+            });
+          }
+        } else {
+          const voice = document.getElementById('voice-select').value;
+          res = await fetch('/api/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, voice, speed, engine: 'kokoro' }),
+          });
+        }
+
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
           throw new Error(errData.error || res.statusText);
@@ -3253,7 +3362,8 @@
 
         dlBtn.style.display = 'inline-block';
         dlBtn.href = audioUrl;
-        statusMsg.textContent = 'Áudio gerado em menos de 1 segundo!';
+        dlBtn.download = engine === 'f5' ? 'f5_ptbr_clonado.wav' : 'fala_kokoro.wav';
+        statusMsg.textContent = engine === 'f5' ? 'Áudio F5-TTS gerado com sucesso via GPU!' : 'Áudio gerado em menos de 1 segundo!';
       } catch (err) {
         statusMsg.textContent = 'Erro: ' + err.message;
       } finally {
