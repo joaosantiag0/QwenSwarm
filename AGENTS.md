@@ -87,22 +87,25 @@ How QwenSwarm works and how we operate it (implementation history as of October 
 - `POST /api/llm/chat` — OpenAI-compatible chat completion (`messages`, `system_prompt`, `temperature`, `max_tokens`). Automatically pauses Qwen image queue and purges ComfyUI VRAM.
 - `POST /api/llm/release` — Manually shuts down `llama-server` and resumes the Qwen image queue immediately.
 
-### 🎙️ Voice & Audio (Kokoro-82M, F5-TTS PT-BR & Whisper)
-- `GET /api/tts/voices` — Lists available neural voices (Kokoro PT-BR/EN-US) and registered TTS engines (`kokoro`, `f5`).
-- `GET /api/tts/status` — Checks readiness of Kokoro sidecar, F5-TTS model (`firstpixel/F5-TTS-pt-br`), and CUDA acceleration support.
-- `POST /api/tts` · `POST /api/tts/f5` — Synthesizes speech returning raw WAV audio. Supports both JSON and `multipart/form-data`:
-  - `engine`: `kokoro` (default) or `f5` (F5-TTS high-fidelity / zero-shot cloning).
-  - `voice`: Kokoro voice ID (`pf_dora`, `pm_alex`, etc.) or F5-TTS identifier.
+### 🎙️ Voice & Audio (Fish Audio Drama 3 17GB, Fish S2 Pro 44.1kHz, Kokoro-82M & Whisper)
+- `GET /api/tts/voices` — Lists available neural voices (Kokoro PT-BR/EN-US) and registered TTS engines (`drama3` [default], `fish_s2`, `kokoro`, with `f5` alias).
+- `GET /api/tts/status` — Checks readiness of Fish Audio Drama 3 (`drama3` 17GB MoE 35B), Fish Audio S2 Pro (`fish_s2`), Kokoro sidecar, and CUDA GPU acceleration support.
+- `POST /api/tts` · `POST /api/tts/drama3` · `POST /api/tts/fish` · `POST /api/tts/f5` — Synthesizes speech returning raw WAV audio. Supports both JSON and `multipart/form-data`:
+  - `engine`: `drama3` (default / Fish Audio Drama 3 17GB MoE 35B expressivo), `fish_s2` (Fish Audio S2 Pro 44.1kHz), or `kokoro` (ultra-fast <1s).
+  - `voice`: Optional voice identifier (default: Beatriz podcast host).
   - `ref_audio`: Uploaded audio clip file or base64 string for zero-shot voice cloning.
   - `ref_text`: Optional transcription of the reference audio (automatically transcribed via Whisper.cpp if omitted).
-  - `device`: `cuda` (automatically pauses Qwen queue and purges VRAM via `GPUArbiter`) or `cpu`.
+  - `seed`: Optional integer for procedural voice design (scratch generation).
+  - `temperature`: Temperature factor (default 0.85 for Drama 3, 0.7 for Fish S2).
+  - `device`: `cuda` (automatically pauses Qwen queue, frees VRAM and manages `audiocpp_server` via `GPUArbiter` with 3-minute idle timeout) or `cpu`.
   - `speed`: Playback speed factor (0.8 - 1.4).
+- `POST /api/tts/release` — Manually stops `audiocpp_server` and immediately resumes the Qwen image queue.
 - `GET /api/transcribe/status` — Checks Whisper model availability and supported languages.
 - `POST /api/transcribe` — Transcribes audio/video files via Whisper.cpp (accepts multipart `audio`/`file` or JSON `audio_base64`, with optional `lang`). Returns full text, language detection, and segment timestamps.
 
 ### ⚙️ System & GPU Telemetry
 - `GET /api/system/gpu` — Real-time telemetry (`vram_used_mb`, `vram_total_mb`, `gpu_util_pct`, `temperature_c`, `mode`, `queue_paused`).
-- `POST /api/system/gpu/action` — Manual control actions (`pause`, `resume`, `free`, `release_llm`).
+- `POST /api/system/gpu/action` — Manual control actions (`pause`, `resume`, `free`, `release_llm`, `release_voice`, `release_drama`, `release_fish`).
 
 ## Operations / Deployment (Linux Servers)
 

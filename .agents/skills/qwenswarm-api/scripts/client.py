@@ -210,12 +210,25 @@ def cmd_llm(args):
 
 def cmd_tts(args):
     text = args.text
-    voice = args.voice or "pf_dora"
+    voice = args.voice or "beatriz"
     speed = args.speed or 1.0
+    engine = args.engine or "drama3"
     out_path = Path(args.out) if args.out else Path(f"output_speech_{int(time.time())}.wav")
 
-    req_data = {"text": text, "voice": voice, "speed": speed}
-    print(f"Sintetizando áudio no Kokoro TTS com voz '{voice}'...")
+    req_data = {
+        "text": text,
+        "voice": voice,
+        "speed": speed,
+        "engine": engine,
+    }
+    if getattr(args, "seed", None) is not None:
+        req_data["seed"] = args.seed
+    if getattr(args, "temperature", None) is not None:
+        req_data["temperature"] = args.temperature
+    if getattr(args, "ref_text", None):
+        req_data["ref_text"] = args.ref_text
+
+    print(f"Sintetizando áudio no motor '{engine}'...")
     code, body, _ = request("/api/tts", method="POST", data=req_data, host=args.host)
     if code != 200:
         print(f"Erro: {body.decode('utf-8', errors='ignore')}", file=sys.stderr)
@@ -321,10 +334,14 @@ def main():
     p_llm.set_defaults(func=cmd_llm)
 
     # tts
-    p_tts = subparsers.add_parser("tts", help="Síntese de Voz (Kokoro TTS)")
+    p_tts = subparsers.add_parser("tts", help="Síntese de Voz (Drama 3 17GB / Fish S2 / Kokoro)")
     p_tts.add_argument("--text", required=True, help="Texto para sintetizar")
-    p_tts.add_argument("--voice", default="pf_dora", help="Voz (pf_dora, pm_alex, pm_santa, af_heart, am_adam)")
+    p_tts.add_argument("--engine", default="drama3", choices=["drama3", "fish_s2", "kokoro"], help="Motor de síntese")
+    p_tts.add_argument("--voice", default="beatriz", help="Voz predefinida (ex: beatriz, pf_dora, pm_alex)")
     p_tts.add_argument("--speed", type=float, default=1.0)
+    p_tts.add_argument("--seed", type=int, help="Seed numérica para voice design procedural")
+    p_tts.add_argument("--temperature", type=float, default=0.85, help="Temperatura de amostragem")
+    p_tts.add_argument("--ref-text", help="Transcrição do áudio de referência")
     p_tts.add_argument("--out", help="Arquivo WAV de saída")
     p_tts.set_defaults(func=cmd_tts)
 

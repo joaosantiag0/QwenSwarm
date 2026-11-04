@@ -1326,25 +1326,26 @@
       </div>
     </div>
 
-    <!-- TAB 4: VOZ (KOKORO TTS & F5-TTS CLONING) -->
+    <!-- TAB 4: VOZ (DRAMA 3 17GB, FISH S2 & KOKORO TTS) -->
     <div id="tab-voice" class="suite-tab-pane">
       <h1>Voice Studio — Síntese Neural &amp; Clonagem de Voz</h1>
-      <p class="sub">Síntese ultra-rápida com Kokoro-82M (&lt;1s) e clonagem de voz de alta fidelidade com F5-TTS PT-BR integrado ao GPUArbiter.</p>
+      <p class="sub">Síntese expressiva com Fish Audio Drama 3 (MoE 35B / 17GB), Fish Audio S2 Pro (44.1kHz) e Kokoro-82M (&lt;1s) integrado ao GPUArbiter.</p>
 
       <div class="voice-grid">
         <div class="card">
           <label for="voice-text">Texto para Falar</label>
-          <textarea id="voice-text" placeholder="Digite ou cole aqui o texto que a IA deve falar com entonação natural..."></textarea>
+          <textarea id="voice-text" placeholder="Digite ou cole aqui o texto. No Drama 3 você pode usar diretivas como [jovem, empolgada, host brasileira] ou [laughs]..."></textarea>
 
           <div class="row" style="margin-top:0.75rem">
             <div class="field">
               <label for="voice-engine">Motor de Síntese</label>
               <select id="voice-engine" class="select-input" onchange="toggleVoiceEngine()">
-                <option value="kokoro" selected>⚡ Kokoro-82M (Ultra-rápido &lt;1s)</option>
-                <option value="f5">💎 F5-TTS PT-BR (Clonagem de Voz Zero-Shot &amp; HiFi)</option>
+                <option value="drama3" selected>🎭 Drama 3 17GB (MoE 35B Expressivo &amp; Clonagem - Padrão)</option>
+                <option value="fish">💎 Fish Audio S2 Pro (Studio HiFi 44.1kHz)</option>
+                <option value="kokoro">⚡ Kokoro-82M (Ultra-rápido &lt;1s)</option>
               </select>
             </div>
-            <div class="field-narrow" id="voice-device-wrap" style="display:none">
+            <div class="field-narrow" id="voice-device-wrap" style="display:block">
               <label for="voice-device">Hardware</label>
               <select id="voice-device" class="select-input">
                 <option value="cuda" selected>🚀 CUDA (RTX 3060)</option>
@@ -1363,7 +1364,7 @@
           </div>
 
           <!-- Seção Específica: Kokoro Voices -->
-          <div id="wrap-kokoro-voices" class="row" style="margin-top:0.75rem">
+          <div id="wrap-kokoro-voices" class="row" style="display:none; margin-top:0.75rem">
             <div class="field">
               <label for="voice-select">Voz Predefinida</label>
               <select id="voice-select" class="select-input">
@@ -1378,15 +1379,16 @@
             </div>
           </div>
 
-          <!-- Seção Específica: F5-TTS Voice Cloning -->
-          <div id="wrap-f5-cloning" style="display:none; margin-top:0.75rem; padding:0.85rem; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px">
-            <label style="font-weight:600; color:var(--text); margin-bottom:0.4rem; display:block">🧬 Configuração da Voz de Referência (Clonagem)</label>
+          <!-- Seção Específica: Fish Audio S2 Pro Voice Cloning & Design -->
+          <div id="wrap-f5-cloning" style="display:block; margin-top:0.75rem; padding:0.85rem; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px">
+            <label style="font-weight:600; color:var(--text); margin-bottom:0.4rem; display:block">🧬 Configuração da Voz Fish Audio S2 Pro</label>
             <div class="row">
               <div class="field">
-                <label for="f5-ref-mode">Fonte da Voz</label>
+                <label for="f5-ref-mode">Modo da Voz</label>
                 <select id="f5-ref-mode" class="select-input" onchange="toggleF5RefMode()">
-                  <option value="default" selected>🇧🇷 Voz Padrão Brasileira (Dora)</option>
-                  <option value="custom">🎙️ Clonar Meu Áudio (Upload de 3 a 10s)</option>
+                  <option value="default" selected>🇧🇷 Beatriz (Podcast Host 44.1kHz - Padrão)</option>
+                  <option value="custom">🎙️ Clonar Meu Áudio (Upload WAV/MP3)</option>
+                  <option value="seed">🎲 Voz Procedural por Seed (Voice Design)</option>
                 </select>
               </div>
             </div>
@@ -1397,7 +1399,20 @@
 
               <label for="f5-ref-text" style="margin-top:0.5rem">Transcrição do Áudio de Referência (Opcional)</label>
               <input type="text" id="f5-ref-text" placeholder="Deixe em branco para o Whisper auto-transcrever a referência...">
-              <p class="hint" style="margin-top:0.3rem">Dica: Áudios curtos (3 a 8 segundos) sem ruído de fundo produzem a melhor clonagem.</p>
+              <p class="hint" style="margin-top:0.3rem">Dica: Áudios de 3 a 10 segundos sem ruído produzem uma clonagem idêntica.</p>
+            </div>
+
+            <div id="wrap-fish-seed" style="display:none; margin-top:0.6rem">
+              <div class="row" style="align-items:flex-end">
+                <div class="field">
+                  <label for="fish-seed-input">Seed Numérica (1 a 999999)</label>
+                  <input type="number" id="fish-seed-input" placeholder="Ex: 2085, 42..." class="select-input" style="padding:0.45rem">
+                </div>
+                <div class="field-narrow">
+                  <button type="button" class="btn-secondary" style="padding:0.45rem 0.8rem; border-radius:6px" onclick="randomizeFishSeed()">🎲 Aleatório</button>
+                </div>
+              </div>
+              <p class="hint" style="margin-top:0.3rem">Cada número de seed cria uma voz e timbre vocal únicos a partir do zero.</p>
             </div>
           </div>
 
@@ -2911,9 +2926,9 @@
         } else if (st.mode === 'llm') {
           pill.classList.add('mode-llm');
           pillText.textContent = '💬 GPU: Qwen 27B Chat';
-        } else if (st.mode === 'f5_tts' || st.mode === 'voice') {
+        } else if (st.mode === 'fish_tts' || st.mode === 'f5_tts' || st.mode === 'voice') {
           pill.classList.add('mode-voice');
-          pillText.textContent = '🎙️ GPU: F5-TTS Voz Clonada';
+          pillText.textContent = '🎙️ GPU: Fish S2 Pro (Voz)';
         }
 
         // VRAM Bar
@@ -2939,6 +2954,7 @@
     async function releaseGPUToImage() {
       try {
         await fetch('/api/llm/release', { method: 'POST' });
+        await fetch('/api/tts/release', { method: 'POST' });
         await fetch('/api/system/gpu/action', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -3261,16 +3277,16 @@
     function toggleVoiceEngine() {
       const engine = document.getElementById('voice-engine').value;
       const wrapKokoro = document.getElementById('wrap-kokoro-voices');
-      const wrapF5 = document.getElementById('wrap-f5-cloning');
+      const wrapFish = document.getElementById('wrap-f5-cloning');
       const deviceWrap = document.getElementById('voice-device-wrap');
 
-      if (engine === 'f5') {
+      if (engine === 'drama3' || engine === 'fish' || engine === 'f5') {
         wrapKokoro.style.display = 'none';
-        wrapF5.style.display = 'block';
+        wrapFish.style.display = 'block';
         deviceWrap.style.display = 'block';
       } else {
         wrapKokoro.style.display = 'flex';
-        wrapF5.style.display = 'none';
+        wrapFish.style.display = 'none';
         deviceWrap.style.display = 'none';
       }
     }
@@ -3278,11 +3294,18 @@
     function toggleF5RefMode() {
       const mode = document.getElementById('f5-ref-mode').value;
       const customWrap = document.getElementById('wrap-f5-custom-audio');
+      const seedWrap = document.getElementById('wrap-fish-seed');
       customWrap.style.display = mode === 'custom' ? 'block' : 'none';
+      if (seedWrap) seedWrap.style.display = mode === 'seed' ? 'block' : 'none';
+    }
+
+    function randomizeFishSeed() {
+      const input = document.getElementById('fish-seed-input');
+      if (input) input.value = Math.floor(Math.random() * 900000) + 1000;
     }
 
     async function generateVoice() {
-      const engine = document.getElementById('voice-engine')?.value || 'kokoro';
+      const engine = document.getElementById('voice-engine')?.value || 'drama3';
       const text = document.getElementById('voice-text').value.trim();
       const speed = parseFloat(document.getElementById('voice-speed').value);
       const btn = document.getElementById('btn-generate-voice');
@@ -3294,24 +3317,29 @@
       }
 
       btn.disabled = true;
-      if (engine === 'f5') {
-        statusMsg.textContent = 'Coordenando GPU com GPUArbiter e gerando no F5-TTS...';
+      const isAdvanced = (engine === 'drama3' || engine === 'fish' || engine === 'f5');
+      if (engine === 'drama3' || engine === 'f5') {
+        statusMsg.textContent = 'Coordenando GPU com GPUArbiter e sintetizando no Drama 3 (17GB)...';
+      } else if (engine === 'fish') {
+        statusMsg.textContent = 'Coordenando GPU com GPUArbiter e sintetizando no Fish Audio S2 Pro...';
       } else {
         statusMsg.textContent = 'Sintetizando áudio no Kokoro-82M...';
       }
 
       try {
         let res;
-        if (engine === 'f5') {
+        if (isAdvanced) {
           const mode = document.getElementById('f5-ref-mode')?.value || 'default';
           const device = document.getElementById('voice-device')?.value || 'cuda';
           const refFile = document.getElementById('f5-ref-file')?.files?.[0];
           const refText = document.getElementById('f5-ref-text')?.value?.trim() || '';
+          const seedInput = document.getElementById('fish-seed-input')?.value;
+          const targetEngine = engine === 'fish' ? 'fish_s2' : 'drama3';
 
           if (mode === 'custom' && refFile) {
             const formData = new FormData();
             formData.append('text', text);
-            formData.append('engine', 'f5');
+            formData.append('engine', targetEngine);
             formData.append('speed', speed);
             formData.append('device', device);
             formData.append('ref_audio', refFile);
@@ -3322,16 +3350,21 @@
               body: formData,
             });
           } else {
+            const payload = {
+              text,
+              engine: targetEngine,
+              speed,
+              device,
+            };
+            if (mode === 'seed' && seedInput) {
+              payload.seed = parseInt(seedInput, 10);
+            }
+            if (refText) payload.ref_text = refText;
+
             res = await fetch('/api/tts', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                text,
-                engine: 'f5',
-                speed,
-                device,
-                ref_text: refText || undefined,
-              }),
+              body: JSON.stringify(payload),
             });
           }
         } else {
@@ -3362,8 +3395,16 @@
 
         dlBtn.style.display = 'inline-block';
         dlBtn.href = audioUrl;
-        dlBtn.download = engine === 'f5' ? 'f5_ptbr_clonado.wav' : 'fala_kokoro.wav';
-        statusMsg.textContent = engine === 'f5' ? 'Áudio F5-TTS gerado com sucesso via GPU!' : 'Áudio gerado em menos de 1 segundo!';
+        if (engine === 'drama3' || engine === 'f5') {
+          dlBtn.download = 'drama3_17gb.wav';
+          statusMsg.textContent = 'Áudio Drama 3 (17GB MoE 35B) gerado com sucesso via GPU!';
+        } else if (engine === 'fish') {
+          dlBtn.download = 'fish_s2_44k.wav';
+          statusMsg.textContent = 'Áudio Fish Audio S2 Pro (44.1kHz) gerado com sucesso via GPU!';
+        } else {
+          dlBtn.download = 'fala_kokoro.wav';
+          statusMsg.textContent = 'Áudio gerado em menos de 1 segundo!';
+        }
       } catch (err) {
         statusMsg.textContent = 'Erro: ' + err.message;
       } finally {

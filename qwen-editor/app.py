@@ -201,10 +201,12 @@ class GPUArbiter:
     MODE_VIDEO = "video"
     MODE_LLM = "llm"
     MODE_VOICE = "voice"
+    MODE_DRAMA = "drama_tts"
+    MODE_FISH = "fish_tts"
     MODE_F5 = "f5_tts"
 
     def __init__(self):
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self.active_mode = "qwen"
         self.task_description = "Fila de Imagens ativa"
         self.active_since = time.time()
@@ -218,6 +220,15 @@ class GPUArbiter:
         self.llm_thread: threading.Thread | None = None
         self.video_active = False
 
+        # Fish Audio Drama 3 & S2 Pro (audiocpp_server) Subprocess tracking
+        self.fish_proc: subprocess.Popen | None = None
+        self.fish_port = 8096
+        self.fish_last_activity = 0.0
+        self.fish_idle_timeout = 180.0  # 3 minutes auto-release
+        self.fish_thread: threading.Thread | None = None
+        self.fish_stopped_comfyui = False
+        self.active_audio_engine: str | None = None
+
     def get_status(self) -> dict:
         vram_mb, total_mb, util_pct, temp_c = self._get_nvidia_stats()
         return {
@@ -230,8 +241,12 @@ class GPUArbiter:
             "gpu_util_pct": util_pct,
             "temperature_c": temp_c,
             "llm_running": self.llm_proc is not None and self.llm_proc.poll() is None,
+            "drama_running": self.fish_proc is not None and self.fish_proc.poll() is None and self.active_audio_engine == "drama3",
+            "fish_running": self.fish_proc is not None and self.fish_proc.poll() is None and self.active_audio_engine == "fish_s2",
+            "audio_active": self.active_mode in ("drama_tts", "fish_tts", "f5_tts", "voice"),
+            "fish_active": self.active_mode in ("drama_tts", "fish_tts", "f5_tts", "voice"),
             "video_active": self.video_active,
-            "f5_active": self.active_mode in ("f5_tts", "voice"),
+            "f5_active": self.active_mode in ("drama_tts", "fish_tts", "f5_tts", "voice"),
         }
 
     def _get_nvidia_stats(self) -> tuple[int, int, int, int]:
@@ -246,7 +261,7 @@ class GPUArbiter:
         except Exception:
             return 0, 0, 0, 0
 
-    def pause_qwen_and_wait_idle(self, timeout_s: float = 60.0) -> bool:
+    def pause_qwen_and_wait_idle(self, timeout_s: float = 90.0) -> bool:
         global queue_paused
         with queue_lock:
             self.was_manually_paused = queue_paused
@@ -254,6 +269,7 @@ class GPUArbiter:
             queue_lock.notify_all()
 
         deadline = time.time() + timeout_s
+        is_idle = False
         while time.time() < deadline:
             try:
                 with urllib.request.urlopen(f"{COMFY_API}/queue", timeout=3) as resp:
@@ -261,10 +277,18 @@ class GPUArbiter:
                     running = qdata.get("queue_running", [])
                     pending = qdata.get("queue_pending", [])
                     if len(running) == 0 and len(pending) == 0:
+                        is_idle = True
                         break
             except Exception:
-                pass
+                is_idle = True
+                break
             time.sleep(1.0)
+
+        if not is_idle:
+            try:
+                urllib.request.urlopen(urllib.request.Request(f"{COMFY_API}/interrupt", data=b""), timeout=3)
+            except Exception:
+                pass
         return True
 
     def free_comfyui_vram(self):
@@ -285,13 +309,18 @@ class GPUArbiter:
             if self.active_mode == mode and mode == "llm" and self.llm_proc and self.llm_proc.poll() is None:
                 self.llm_last_activity = time.time()
                 return True
+            if self.active_mode == mode and mode in ("drama_tts", "fish_tts", "f5_tts", "voice") and self.fish_proc and self.fish_proc.poll() is None:
+                self.fish_last_activity = time.time()
+                return True
 
             if self.active_mode == "llm" and mode != "llm":
                 self._stop_llm()
+            if self.active_mode in ("drama_tts", "fish_tts", "f5_tts", "voice") and mode not in ("drama_tts", "fish_tts", "f5_tts", "voice"):
+                self._stop_fish()
 
             self.pause_qwen_and_wait_idle(timeout_s=timeout_s)
 
-            if mode in ("llm", "video", "f5_tts", "voice"):
+            if mode in ("llm", "video", "drama_tts", "fish_tts", "f5_tts", "voice"):
                 self.free_comfyui_vram()
 
             self.active_mode = mode
@@ -306,11 +335,11 @@ class GPUArbiter:
         with self.lock:
             if mode == "llm":
                 self._stop_llm()
+            elif mode in ("drama_tts", "fish_tts", "f5_tts", "voice"):
+                self._stop_fish()
             elif mode == "video":
                 self.video_active = False
                 self.free_comfyui_vram()
-            elif mode in ("voice", "f5_tts"):
-                pass
 
             self.active_mode = "qwen"
             self.task_description = "Fila de Imagens ativa"
@@ -390,6 +419,116 @@ class GPUArbiter:
                     if time.time() - self.llm_last_activity > self.llm_idle_timeout:
                         print("[GPUArbiter] LLM idle timeout atingido. Liberando GPU para imagens...")
                         self.release_from_task("llm")
+
+    def start_drama_if_needed(self) -> bool:
+        return self._start_audiocpp_if_needed("drama3")
+
+    def start_fish_if_needed(self) -> bool:
+        return self._start_audiocpp_if_needed("fish_s2")
+
+    def _start_audiocpp_if_needed(self, engine: str = "drama3") -> bool:
+        with self.lock:
+            if self.fish_proc and self.fish_proc.poll() is None and self.active_audio_engine == engine:
+                self.fish_last_activity = time.time()
+                return True
+
+            if self.fish_proc and self.active_audio_engine != engine:
+                print(f"[GPUArbiter] Trocando servidor de áudio de {self.active_audio_engine} para {engine}...")
+                self._stop_fish()
+
+            task_name = "Drama 3 17GB TTS ativo" if engine == "drama3" else "Fish Audio S2 Pro TTS ativo"
+            task_mode = "drama_tts" if engine == "drama3" else "fish_tts"
+            self.acquire_for_task(task_mode, task_name)
+
+            bin_path = Path("/home/user/drama3/audiocpp_server")
+            cfg_path = Path("/home/user/drama3/server_drama3.json") if engine == "drama3" else Path("/home/user/drama3/server_fish_s2.json")
+            if not bin_path.is_file() or not cfg_path.is_file():
+                raise FileNotFoundError(f"Binário ou configuração do {engine} não encontrado ({cfg_path})")
+
+            vram_used, vram_total, _, _ = self._get_nvidia_stats()
+            if vram_total > 0 and (vram_total - vram_used) < 7000:
+                print(f"[GPUArbiter] VRAM livre ({vram_total - vram_used}MB) baixa para {engine}. Parando ComfyUI temporariamente...")
+                try:
+                    subprocess.run(["systemctl", "--user", "stop", "comfyui"], timeout=15)
+                    self.fish_stopped_comfyui = True
+                    time.sleep(1)
+                except Exception as ex:
+                    print(f"[GPUArbiter] Aviso ao parar ComfyUI: {ex}")
+
+            cmd = [
+                str(bin_path),
+                "--config", str(cfg_path),
+            ]
+            env = os.environ.copy()
+            env["LD_LIBRARY_PATH"] = f"/home/user/ComfyUI/venv/lib/python3.12/site-packages/nvidia/nccl/lib:{env.get('LD_LIBRARY_PATH', '')}"
+
+            self.fish_proc = subprocess.Popen(
+                cmd,
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self.fish_last_activity = time.time()
+            self.active_audio_engine = engine
+
+            deadline = time.time() + 90.0
+            ready = False
+            expected_tag = b"drama3" if engine == "drama3" else b"fish_s2"
+            while time.time() < deadline:
+                try:
+                    with urllib.request.urlopen(f"http://127.0.0.1:{self.fish_port}/v1/models", timeout=2) as resp:
+                        if resp.status == 200 and expected_tag in resp.read():
+                            ready = True
+                            break
+                except Exception:
+                    pass
+                time.sleep(0.5)
+
+            if not ready:
+                self._stop_fish()
+                raise RuntimeError(f"Motor {engine} falhou ao inicializar na GPU dentro do tempo limite")
+
+            if self.fish_thread is None or not self.fish_thread.is_alive():
+                self.fish_thread = threading.Thread(target=self._fish_idle_monitor, daemon=True)
+                self.fish_thread.start()
+            return True
+
+    def _stop_fish(self):
+        if self.fish_proc:
+            try:
+                self.fish_proc.terminate()
+                self.fish_proc.wait(timeout=5)
+            except Exception:
+                try:
+                    self.fish_proc.kill()
+                except Exception:
+                    pass
+            self.fish_proc = None
+
+        self.active_audio_engine = None
+
+        try:
+            subprocess.run(["pkill", "-f", "audiocpp_server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+        if getattr(self, "fish_stopped_comfyui", False):
+            self.fish_stopped_comfyui = False
+            print("[GPUArbiter] Reiniciando ComfyUI após encerramento do servidor de áudio...")
+            try:
+                subprocess.run(["systemctl", "--user", "start", "comfyui"], timeout=15)
+                time.sleep(2)
+            except Exception as ex:
+                print(f"[GPUArbiter] Aviso ao reiniciar ComfyUI: {ex}")
+
+    def _fish_idle_monitor(self):
+        while True:
+            time.sleep(5)
+            with self.lock:
+                if self.active_mode in ("drama_tts", "fish_tts", "f5_tts", "voice") and self.fish_proc and self.fish_proc.poll() is None:
+                    if time.time() - self.fish_last_activity > self.fish_idle_timeout:
+                        print("[GPUArbiter] Áudio TTS idle timeout atingido (180s). Liberando GPU para imagens...")
+                        self.release_from_task(self.active_mode)
 
 gpu_arbiter = GPUArbiter()
 
@@ -729,88 +868,168 @@ def whisper_transcribe(audio_path: Path, lang: str = "auto") -> dict:
     }
 
 
-# --- Voice Engine: F5-TTS PT-BR (Zero-Shot Voice Cloning) ---
-F5_CLI_BIN = Path("/home/user/f5-venv/bin/f5-tts_infer-cli")
-F5_MODEL_PTBR = Path("/home/user/f5_models/pt-br/model_last.safetensors")
-F5_DEFAULT_REF_AUDIO = Path("/home/user/sample_ptbr.wav")
-F5_DEFAULT_REF_TEXT = "este é um teste de áudio em português brasileiro."
+# --- Voice Engine: Fish Audio Drama 3 & S2 Pro (High-Fidelity MoE 35B TTS, Voice Cloning & Design) ---
+DRAMA_SERVER_BIN = Path("/home/user/drama3/audiocpp_server")
+DRAMA_SERVER_CONFIG = Path("/home/user/drama3/server_drama3.json")
+DRAMA_DEFAULT_REF_AUDIO = Path("/home/user/drama3/vozes_femininas/voz_2_beatriz_podcast_host.wav")
+DRAMA_DEFAULT_REF_TEXT = "cara, vocês não têm ideia do que aconteceu essa semana! puxa uma cadeira e prepara o café, porque o episódio de hoje tá imperdível!"
+
+FISH_SERVER_BIN = Path("/home/user/drama3/audiocpp_server")
+FISH_SERVER_CONFIG = Path("/home/user/drama3/server_fish_s2.json")
+FISH_DEFAULT_REF_AUDIO = Path("/home/user/drama3/vozes_femininas/voz_2_beatriz_podcast_host.wav")
+FISH_DEFAULT_REF_TEXT = "cara, vocês não têm ideia do que aconteceu essa semana! puxa uma cadeira e prepara o café, porque o episódio de hoje tá imperdível!"
 
 
-def f5_synthesize(
+def drama3_synthesize(
     text: str,
     ref_audio_path: Path | None = None,
     ref_text: str | None = None,
+    seed: int | None = None,
+    temperature: float = 0.85,
     speed: float = 1.0,
     device: str = "cuda",
 ) -> bytes:
     """
-    Sintetiza áudio de alta fidelidade e clonagem de voz usando F5-TTS PT-BR.
-    Coordena com o GPUArbiter para pausar a fila de imagens e liberar VRAM caso execute na GPU (CUDA).
+    Sintetiza áudio expressivo e natural usando o Fish Audio Drama 3 (MoE 35B, 17.05 GB GGUF) via audiocpp_server na GPU.
+    Suporta clonagem de voz instantânea (ref_audio + ref_text), tags emocionais no texto e voice design (seed).
+    Coordena automaticamente com o GPUArbiter para pausar a fila Qwen e liberar VRAM.
     """
-    cli_bin = F5_CLI_BIN if F5_CLI_BIN.is_file() else Path(shutil.which("f5-tts_infer-cli") or "")
-    if not cli_bin.is_file() or not F5_MODEL_PTBR.is_file():
-        raise FileNotFoundError("Binário do F5-TTS ou modelo PT-BR não encontrado no servidor")
-
     clean_text = text.strip()
     if not clean_text:
         raise ValueError("Texto para síntese está vazio")
 
-    ref_audio = ref_audio_path if (ref_audio_path and ref_audio_path.is_file()) else F5_DEFAULT_REF_AUDIO
-    if not ref_audio.is_file():
-        raise FileNotFoundError("Áudio de referência não encontrado")
+    # Inicia ou reusa o audiocpp_server com drama3 na GPU via GPUArbiter
+    gpu_arbiter.start_drama_if_needed()
 
-    clean_ref_text = (ref_text or "").strip()
-    if not clean_ref_text:
-        if ref_audio == F5_DEFAULT_REF_AUDIO:
-            clean_ref_text = F5_DEFAULT_REF_TEXT
-        else:
+    payload: dict = {
+        "model": "drama3",
+        "input": clean_text,
+    }
+
+    options: dict = {}
+    if speed != 1.0:
+        options["speed"] = float(speed)
+    if temperature != 0.85:
+        options["temperature"] = float(temperature)
+
+    if ref_audio_path and ref_audio_path.is_file():
+        # Clonagem de voz com áudio customizado
+        clean_ref_text = (ref_text or "").strip()
+        if not clean_ref_text:
             try:
-                tr = whisper_transcribe(ref_audio, lang="pt")
+                tr = whisper_transcribe(ref_audio_path, lang="pt")
                 clean_ref_text = tr.get("text", "")
             except Exception as ex:
-                print(f"[F5-TTS] Aviso: falha ao transcrever áudio de referência com Whisper: {ex}")
+                print(f"[Drama-3] Aviso: falha ao transcrever áudio de referência com Whisper: {ex}")
                 clean_ref_text = ""
 
-    out_path = Path(f"/tmp/f5_synth_{uuid.uuid4().hex[:8]}.wav")
-    use_cuda = device.lower() == "cuda"
+        payload["voice_ref"] = str(ref_audio_path.resolve())
+        if clean_ref_text:
+            payload["reference_text"] = clean_ref_text
+    elif seed is not None:
+        # Design procedural por seed
+        options["seed"] = int(seed)
+    else:
+        # Padrão: Voz Beatriz (Podcast Host)
+        if DRAMA_DEFAULT_REF_AUDIO.is_file():
+            payload["voice_ref"] = str(DRAMA_DEFAULT_REF_AUDIO.resolve())
+            payload["reference_text"] = DRAMA_DEFAULT_REF_TEXT
 
-    if use_cuda:
-        gpu_arbiter.acquire_for_task("f5_tts", "Síntese F5-TTS com Clonagem de Voz", timeout_s=45.0)
+    if options:
+        payload["options"] = options
+
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{gpu_arbiter.fish_port}/v1/audio/speech",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
 
     try:
-        cmd = [
-            str(cli_bin),
-            "-m", "F5TTS_Base",
-            "-p", str(F5_MODEL_PTBR),
-            "-r", str(ref_audio),
-            "-s", clean_ref_text.lower(),
-            "-t", clean_text.lower(),
-            "-o", str(out_path.parent),
-            "-w", out_path.name,
-            "--speed", str(speed),
-            "--device", "cuda" if use_cuda else "cpu",
-        ]
-        env = os.environ.copy()
-        env["PATH"] = f"/home/user/f5-venv/bin:/home/user/ai-toolkit/.ffmpeg/bin:{env.get('PATH', '')}"
-        env["LD_LIBRARY_PATH"] = f"/home/user/ai-toolkit/.ffmpeg/lib:{env.get('LD_LIBRARY_PATH', '')}"
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            audio_bytes = resp.read()
+            with gpu_arbiter.lock:
+                gpu_arbiter.fish_last_activity = time.time()
+            return audio_bytes
+    except Exception as e:
+        raise RuntimeError(f"Fish Audio Drama 3 (17GB) falhou ao sintetizar áudio: {e}")
 
-        res = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=180,
-            env=env,
-        )
-        if not out_path.is_file():
-            err_msg = res.stderr[-500:] if res.stderr else (res.stdout[-500:] if res.stdout else "Erro desconhecido")
-            raise RuntimeError(f"F5-TTS falhou ao gerar áudio: {err_msg}")
 
-        return out_path.read_bytes()
-    finally:
-        out_path.unlink(missing_ok=True)
-        if use_cuda:
-            gpu_arbiter.release_from_task("f5_tts")
+def fish_s2_synthesize(
+    text: str,
+    ref_audio_path: Path | None = None,
+    ref_text: str | None = None,
+    seed: int | None = None,
+    temperature: float = 0.7,
+    speed: float = 1.0,
+    device: str = "cuda",
+) -> bytes:
+    """
+    Sintetiza áudio de altíssima fidelidade (44.1 kHz) usando Fish Audio S2 Pro GGUF na GPU.
+    Suporta clonagem de voz (ref_audio + ref_text) e voice design procedural (seed).
+    Coordena automaticamente com o GPUArbiter para pausar a fila Qwen e liberar VRAM.
+    """
+    clean_text = text.strip()
+    if not clean_text:
+        raise ValueError("Texto para síntese está vazio")
+
+    # Inicia ou reusa o audiocpp_server na GPU via GPUArbiter
+    gpu_arbiter.start_fish_if_needed()
+
+    payload: dict = {
+        "model": "fish_s2",
+        "input": clean_text,
+    }
+
+    options: dict = {}
+    if speed != 1.0:
+        options["speed"] = float(speed)
+    if temperature != 0.7:
+        options["temperature"] = float(temperature)
+
+    if ref_audio_path and ref_audio_path.is_file():
+        # Clonagem de voz com áudio customizado
+        clean_ref_text = (ref_text or "").strip()
+        if not clean_ref_text:
+            try:
+                tr = whisper_transcribe(ref_audio_path, lang="pt")
+                clean_ref_text = tr.get("text", "")
+            except Exception as ex:
+                print(f"[Fish-S2] Aviso: falha ao transcrever áudio de referência com Whisper: {ex}")
+                clean_ref_text = ""
+
+        payload["voice_ref"] = str(ref_audio_path.resolve())
+        if clean_ref_text:
+            payload["reference_text"] = clean_ref_text
+    elif seed is not None:
+        # Design procedural por seed
+        options["seed"] = int(seed)
+    else:
+        # Padrão: Voz Beatriz (Podcast Host 44.1kHz)
+        if FISH_DEFAULT_REF_AUDIO.is_file():
+            payload["voice_ref"] = str(FISH_DEFAULT_REF_AUDIO.resolve())
+            payload["reference_text"] = FISH_DEFAULT_REF_TEXT
+
+    if options:
+        payload["options"] = options
+
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{gpu_arbiter.fish_port}/v1/audio/speech",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            audio_bytes = resp.read()
+            with gpu_arbiter.lock:
+                gpu_arbiter.fish_last_activity = time.time()
+            return audio_bytes
+    except Exception as e:
+        raise RuntimeError(f"Fish Audio S2 Pro falhou ao sintetizar áudio: {e}")
+
+
+# Alias para retrocompatibilidade
+f5_synthesize = drama3_synthesize
 
 
 def field_has_upload(field) -> bool:
@@ -3474,30 +3693,64 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(gpu_arbiter.get_status())
 
         if path == "/api/tts/voices":
+            drama_ready = DRAMA_SERVER_BIN.is_file() and DRAMA_SERVER_CONFIG.is_file()
+            fish_ready = FISH_SERVER_BIN.is_file() and FISH_SERVER_CONFIG.is_file()
             return self._json({
                 "voices": KOKORO_VOICES,
                 "engines": [
+                    {"id": "drama3", "name": "Drama 3 (MoE 35B / 17GB Expressivo & Clonagem)", "type": "voice_clone_and_design", "default": True},
+                    {"id": "fish_s2", "name": "Fish Audio S2 Pro (HiFi 44.1kHz Studio)", "type": "voice_clone_and_design"},
                     {"id": "kokoro", "name": "Kokoro-82M (Ultra-rápido <1s)", "type": "neural_tts"},
-                    {"id": "f5", "name": "F5-TTS PT-BR (Clonagem Zero-Shot)", "type": "voice_clone"},
                 ],
+                "drama3": {
+                    "ready": drama_ready,
+                    "model": "Fish-Audio Drama 3 (17.05 GB MoE 35B Q2_K/Q8_0)",
+                    "default_voice": "Beatriz (Podcast Host Expressiva)",
+                    "cuda_supported": True,
+                },
+                "fish_s2": {
+                    "ready": fish_ready,
+                    "model": "Fish-Audio-S2-Pro-GGUF (5.88 GB Q8_0)",
+                    "sample_rate": 44100,
+                    "default_voice": "Beatriz (Podcast Host 44.1kHz)",
+                    "cuda_supported": True,
+                },
                 "f5_tts": {
-                    "ready": F5_CLI_BIN.is_file() and F5_MODEL_PTBR.is_file(),
-                    "model": "firstpixel/F5-TTS-pt-br",
+                    "ready": drama_ready or fish_ready,
+                    "model": "Drama 3 (17GB) / Fish S2",
                     "cuda_supported": True,
                 },
             })
 
         if path == "/api/tts/status":
+            drama_ready = DRAMA_SERVER_BIN.is_file() and DRAMA_SERVER_CONFIG.is_file()
+            fish_ready = FISH_SERVER_BIN.is_file() and FISH_SERVER_CONFIG.is_file()
             return self._json({
                 "kokoro": {
                     "ready": True,
                     "endpoint": KOKORO_API,
                     "voices": KOKORO_VOICES,
                 },
+                "drama3": {
+                    "ready": drama_ready,
+                    "model": "Fish-Audio Drama 3 (17.05 GB MoE 35B Q2_K/Q8_0)",
+                    "default_voice": "Beatriz (Podcast Host Expressiva)",
+                    "cuda_supported": True,
+                    "active": gpu_arbiter.active_mode in ("drama_tts", "voice") and gpu_arbiter.active_audio_engine == "drama3",
+                    "process_running": gpu_arbiter.fish_proc is not None and gpu_arbiter.fish_proc.poll() is None and gpu_arbiter.active_audio_engine == "drama3",
+                },
+                "fish_s2": {
+                    "ready": fish_ready,
+                    "model": "Fish-Audio-S2-Pro-GGUF (5.88 GB Q8_0)",
+                    "sample_rate": 44100,
+                    "default_voice": "Beatriz (Podcast Host 44.1kHz)",
+                    "cuda_supported": True,
+                    "active": gpu_arbiter.active_mode in ("fish_tts", "voice") and gpu_arbiter.active_audio_engine == "fish_s2",
+                    "process_running": gpu_arbiter.fish_proc is not None and gpu_arbiter.fish_proc.poll() is None and gpu_arbiter.active_audio_engine == "fish_s2",
+                },
                 "f5_tts": {
-                    "ready": F5_CLI_BIN.is_file() and F5_MODEL_PTBR.is_file(),
-                    "model": "firstpixel/F5-TTS-pt-br (1.28 GB)",
-                    "default_ref": "Dora PT-BR (3.0s)",
+                    "ready": drama_ready or fish_ready,
+                    "model": "Drama 3 (17GB)",
                     "cuda_supported": True,
                 },
             })
@@ -3809,8 +4062,9 @@ class Handler(BaseHTTPRequestHandler):
                     gpu_arbiter.free_comfyui_vram()
                 elif action == "release_llm":
                     gpu_arbiter.release_from_task("llm")
-                elif action in ("release_f5", "release_voice"):
-                    gpu_arbiter.release_from_task("f5_tts")
+                elif action in ("release_f5", "release_voice", "release_drama", "release_fish"):
+                    gpu_arbiter.release_from_task("drama_tts")
+                    gpu_arbiter.release_from_task("fish_tts")
                 return self._json(gpu_arbiter.get_status())
 
             if parsed.path == "/api/video/generate":
@@ -3904,13 +4158,19 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as e:
                     return self._json({"error": str(e)}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
-            if parsed.path == "/api/llm/release":
-                gpu_arbiter.release_from_task("llm")
+            if parsed.path in ("/api/llm/release", "/api/tts/release"):
+                if parsed.path == "/api/llm/release":
+                    gpu_arbiter.release_from_task("llm")
+                else:
+                    gpu_arbiter.release_from_task("drama_tts")
+                    gpu_arbiter.release_from_task("fish_tts")
                 return self._json({"ok": True, "message": "GPU liberada para a fila de imagens"})
 
-            if parsed.path in ("/api/tts", "/api/tts/f5"):
+            if parsed.path in ("/api/tts", "/api/tts/drama3", "/api/tts/drama", "/api/tts/fish", "/api/tts/f5"):
                 ctype = self.headers.get("Content-Type", "")
                 temp_ref: Path | None = None
+                seed: int | None = None
+                temperature = 0.85
                 try:
                     if "multipart/form-data" in ctype:
                         form = cgi.FieldStorage(
@@ -3919,11 +4179,24 @@ class Handler(BaseHTTPRequestHandler):
                             environ={"REQUEST_METHOD": "POST", "CONTENT_TYPE": ctype},
                         )
                         text = form_text(form, "text") or ""
-                        engine = form_text(form, "engine") or ("f5" if parsed.path == "/api/tts/f5" else "kokoro")
-                        voice = form_text(form, "voice") or ("f5_ptbr" if engine == "f5" else "pf_dora")
+                        default_engine = "fish_s2" if parsed.path == "/api/tts/fish" else "drama3"
+                        engine = form_text(form, "engine") or default_engine
+                        voice = form_text(form, "voice") or ("beatriz" if engine in ("drama3", "drama", "fish", "fish_s2", "f5") else "pf_dora")
                         speed = float(form_text(form, "speed") or 1.0)
                         device = form_text(form, "device") or "cuda"
                         ref_text = form_text(form, "ref_text") or None
+                        seed_str = form_text(form, "seed")
+                        if seed_str:
+                            try:
+                                seed = int(seed_str)
+                            except ValueError:
+                                pass
+                        temp_str = form_text(form, "temperature")
+                        if temp_str:
+                            try:
+                                temperature = float(temp_str)
+                            except ValueError:
+                                pass
 
                         upload = None
                         if "ref_audio" in form:
@@ -3937,33 +4210,54 @@ class Handler(BaseHTTPRequestHandler):
                             temp_ref = Path(f"/tmp/ref_upload_{uuid.uuid4().hex[:8]}.wav")
                             with open(temp_ref, "wb") as f_out:
                                 shutil.copyfileobj(upload.file, f_out)
-                            engine = "f5"
+                            if engine not in ("fish", "fish_s2"):
+                                engine = "drama3"
                     else:
                         data = read_json_body(self)
                         text = str(data.get("text") or "").strip()
+                        default_engine = "fish_s2" if parsed.path == "/api/tts/fish" else "drama3"
                         engine = str(data.get("engine") or "").strip().lower()
                         if not engine:
-                            engine = "f5" if parsed.path == "/api/tts/f5" else "kokoro"
+                            engine = default_engine
                         voice = str(data.get("voice") or "").strip()
                         speed = float(data.get("speed") or 1.0)
+                        temperature = float(data.get("temperature") or 0.85)
                         device = str(data.get("device") or "cuda").strip().lower()
                         ref_text = str(data.get("ref_text") or "").strip() if data.get("ref_text") else None
+                        if data.get("seed") is not None:
+                            try:
+                                seed = int(data.get("seed"))
+                            except (ValueError, TypeError):
+                                pass
 
                         ref_b64 = str(data.get("ref_audio_base64") or data.get("ref_audio") or "")
                         if ref_b64 and len(ref_b64) > 100:
                             import base64
                             temp_ref = Path(f"/tmp/ref_upload_{uuid.uuid4().hex[:8]}.wav")
                             temp_ref.write_bytes(base64.b64decode(ref_b64))
-                            engine = "f5"
+                            if engine not in ("fish", "fish_s2"):
+                                engine = "drama3"
 
                     if not text:
                         return self._json({"error": "Texto para fala é obrigatório"}, HTTPStatus.BAD_REQUEST)
 
-                    if engine == "f5" or voice.startswith("f5"):
-                        audio_bytes = f5_synthesize(
+                    if engine in ("drama3", "drama", "fish_drama3", "f5") or voice.startswith("drama") or voice.startswith("f5"):
+                        audio_bytes = drama3_synthesize(
                             text=text,
                             ref_audio_path=temp_ref,
                             ref_text=ref_text,
+                            seed=seed,
+                            temperature=temperature,
+                            speed=speed,
+                            device=device,
+                        )
+                    elif engine in ("fish", "fish_s2", "fish_audio") or voice.startswith("fish"):
+                        audio_bytes = fish_s2_synthesize(
+                            text=text,
+                            ref_audio_path=temp_ref,
+                            ref_text=ref_text,
+                            seed=seed,
+                            temperature=temperature,
                             speed=speed,
                             device=device,
                         )
