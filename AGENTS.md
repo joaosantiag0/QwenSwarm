@@ -16,7 +16,9 @@ How QwenSwarm works and how we operate it (implementation history as of October 
 - `satellite-worker/` — Autonomous worker for distributed secondary nodes (e.g. RTX 3060 6GB Laptop).
   - `worker.py` — Leases tasks from Master, caches assets, drives local ComfyUI, and buffers completions offline in `outbox/`.
 - `h3-video-editor/` — Standalone video editing UI (untouched).
-- `imgs/` — Local copy downloaded via SSH from server output (manual backup, purged from the server later).
+- `imgs/` — Local copy of generated images (manual backup, purged from the server later).
+- `download_master_images.py` — Read-only downloader: pulls `qwen_web_*.png` from `GET /api/gallery?all=1` + `GET /output/<file>` into a local folder (default `./imgs`, e.g. `--dest /Volumes/3Tb/aiphotos`) with no server-side writes and no queue impact. Idempotent (skips valid local files), atomic `.part` writes, `--watch N` for continuous sync while the queue runs, and `--purge` is **opt-in** (only after verifying every image is saved locally). Never delete outputs by hand to avoid orphaned metadata; use the Web UI or `DELETE /api/images`.
+- `sync_and_purge_master_images.py` — Legacy one-shot variant (sync to `./imgs` + purge) kept for reference.
 
 ## Queue & Worker Architecture (qwen-editor)
 
