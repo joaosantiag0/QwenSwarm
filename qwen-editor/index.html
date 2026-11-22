@@ -1591,17 +1591,21 @@
         const res = await fetch('/api/pool', { method: 'POST', body: fd });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || res.statusText);
-        const newIds = (data.items || []).map(i => i.id);
-        const map = new Map(oldIds.map((oid, i) => [oid, newIds[i]]));
+        const items = data.items || [];
+        const genuinelyNewIds = items.filter(it => !it.is_duplicate).map(it => it.id);
         poolImages = poolImages.filter(p => !oldIds.includes(p.id));
-        poolSelection = [...new Set(poolSelection
-          .map(x => (map.has(x) ? map.get(x) : x))
-          .filter(Boolean))];
+        const existingSelection = poolSelection.filter(x => !oldIds.includes(x));
+        poolSelection = [...new Set([...genuinelyNewIds, ...existingSelection])];
         await loadPool();
         if (data.dup_count > 0) {
-          setStatus(`${data.new_count} photo(s) saved to pool (${data.dup_count} duplicate(s) ignored).`, 'done');
+          const dupInfo = `${data.dup_count} já existente(s) ignorada(s) (não selecionada(s))`;
+          if (data.new_count > 0) {
+            setStatus(`${data.new_count} foto(s) salva(s) no pool · ${dupInfo}.`, 'done');
+          } else {
+            setStatus(`${data.dup_count} foto(s) já existente(s) no pool ignorada(s) (não selecionada(s)).`, 'done');
+          }
         } else {
-          setStatus(`${newIds.length} photo(s) saved to pool.`, 'done');
+          setStatus(`${data.new_count || items.length} foto(s) salva(s) no pool.`, 'done');
         }
       } catch (err) {
         poolImages = poolImages.filter(p => !oldIds.includes(p.id));
