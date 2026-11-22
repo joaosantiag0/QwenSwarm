@@ -1793,7 +1793,7 @@
           <div class="fp-player-row">
             <button type="button" id="fp-grab" class="btn-secondary">Capture current frame</button>
             <span class="fp-time" id="fp-time">0.00s</span>
-            <span class="fp-sub">Clique na miniatura para assistir/visualizar no player. Clique no ✓ para selecionar para o pool.</span>
+            <span class="fp-sub">Navegue com ← e → (ou clique) para mudar o preview. Use Espaço ou ✓ para selecionar.</span>
           </div>
         </div>
         <div class="fp-controls">
@@ -1940,33 +1940,87 @@
       }
     }
 
+    function fpPreviewFrame(frame) {
+      if (!frame || !fpState) return;
+      try { fpVideo.currentTime = frame.time; } catch (err) { /* ignore */ }
+      fpState.activeTime = frame.time;
+      const cards = fpStrip.querySelectorAll('.fp-thumb');
+      let activeCard = null;
+      cards.forEach((card, idx) => {
+        const f = fpState.frames[idx];
+        const match = f && Math.abs(f.time - frame.time) < 0.001;
+        card.classList.toggle('active-preview', match);
+        if (match) activeCard = card;
+      });
+      if (activeCard) {
+        activeCard.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+      }
+    }
+
+    function fpNavigatePreview(delta) {
+      if (!fpState || !fpState.frames || !fpState.frames.length) return;
+      const curTime = (fpState.activeTime !== null && fpState.activeTime !== undefined) ? fpState.activeTime : (fpVideo.currentTime || 0);
+      let curIdx = 0;
+      let bestDiff = Infinity;
+      for (let i = 0; i < fpState.frames.length; i++) {
+        const diff = Math.abs(fpState.frames[i].time - curTime);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          curIdx = i;
+        }
+      }
+      const newIdx = Math.max(0, Math.min(fpState.frames.length - 1, curIdx + delta));
+      fpPreviewFrame(fpState.frames[newIdx]);
+    }
+
+    function fpToggleActiveSelection() {
+      if (!fpState || !fpState.frames || !fpState.frames.length) return;
+      const curTime = (fpState.activeTime !== null && fpState.activeTime !== undefined) ? fpState.activeTime : (fpVideo.currentTime || 0);
+      let curIdx = 0;
+      let bestDiff = Infinity;
+      for (let i = 0; i < fpState.frames.length; i++) {
+        const diff = Math.abs(fpState.frames[i].time - curTime);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          curIdx = i;
+        }
+      }
+      const frame = fpState.frames[curIdx];
+      if (!frame) return;
+      frame.selected = !frame.selected;
+      const cards = fpStrip.querySelectorAll('.fp-thumb');
+      const card = cards[curIdx];
+      if (card) {
+        card.classList.toggle('selected', frame.selected);
+        const check = card.querySelector('.fp-thumb-check');
+        if (check) {
+          check.title = frame.selected ? 'Desmarcar frame' : 'Selecionar frame para o pool';
+          check.setAttribute('aria-label', check.title);
+        }
+      }
+      fpUpdateSelected();
+    }
+
     function fpAppendThumb(frame) {
       const card = document.createElement('div');
       card.className = 'fp-thumb' + (frame.selected ? ' selected' : '');
-      if (fpState && fpState.activeTime !== null && Math.abs(fpState.activeTime - frame.time) < 0.4) {
+      if (fpState && fpState.activeTime !== null && Math.abs(fpState.activeTime - frame.time) < 0.001) {
         card.classList.add('active-preview');
       }
       card.setAttribute('role', 'button');
       card.setAttribute('tabindex', '0');
       card.title = `Clique para visualizar ${fpFormatTime(frame.time)} no player (use o ✓ para selecionar)`;
 
-      const previewFrame = () => {
-        try { fpVideo.currentTime = frame.time; } catch (err) { /* ignore */ }
-        if (fpState) fpState.activeTime = frame.time;
-        fpStrip.querySelectorAll('.fp-thumb').forEach(el => el.classList.remove('active-preview'));
-        card.classList.add('active-preview');
-      };
-
       card.addEventListener('click', (e) => {
         if (e.target.closest('.fp-thumb-check')) return;
-        previewFrame();
+        fpPreviewFrame(frame);
       });
 
       card.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           if (e.target.closest('.fp-thumb-check')) return;
           e.preventDefault();
-          previewFrame();
+          fpPreviewFrame(frame);
         }
       });
 
@@ -2152,6 +2206,9 @@
           const h = fpVideo.videoHeight;
           fpMeta.textContent = `${file.name} · ${w}×${h} · ${fpFormatTime(fpState.duration)}`;
           await fpSampleBatch(true);
+          if (fpState && fpState.frames.length > 0 && fpState.activeTime === null) {
+            fpPreviewFrame(fpState.frames[0]);
+          }
         };
         fpVideo.addEventListener('loadeddata', onLoaded, { once: true });
         fpVideo.addEventListener('error', () => {
@@ -2220,10 +2277,28 @@
       if (fpState) fpTimeEl.textContent = fpFormatTime(fpVideo.currentTime);
     });
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && fpState) {
+      if (!fpState || fpEl.hidden) return;
+      if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
         closeFramePicker(null);
+        return;
+      }
+      const isInput = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
+      if (isInput) return;
+
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        e.stopPropagation();
+        fpNavigatePreview(-1);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        e.stopPropagation();
+        fpNavigatePreview(1);
+      } else if ((e.key === ' ' || e.key.toLowerCase() === 'x') && e.target.tagName !== 'BUTTON') {
+        e.preventDefault();
+        e.stopPropagation();
+        fpToggleActiveSelection();
       }
     });
 
