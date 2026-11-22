@@ -42,7 +42,7 @@ How QwenSwarm works and how we operate it (implementation history as of October 
 - **Pre-caching**: Upon receiving a lease, the worker immediately pre-downloads pool images and preset references while the Master is online.
 - **Offline Resilience (`outbox/`)**: If the Master server (`192.168.2.183`) goes offline or is turned off:
   - The satellite continues rendering its leased batch uninterrupted.
-  - Generated images and metadata are stored in `/home/joao/satellite_worker/outbox/`.
+  - Generated images and metadata are stored in `~/satellite_worker/outbox/` (or configured `$BASE_DIR/outbox`).
   - As soon as the Master comes back online, the worker automatically flushes the outbox via `POST /api/worker/complete` and requests the next block of tasks.
 - **Low-VRAM Hardware Optimization**: For constrained GPUs (e.g. RTX 3060 6GB Laptop), ComfyUI runs with `--lowvram --vram-headroom 1.2 --reserve-vram 0.8`. UNet weights fit within ~3.9GB VRAM while remaining weights and CLIP dynamically offload to system RAM without OOM errors.
 
@@ -126,7 +126,7 @@ How QwenSwarm works and how we operate it (implementation history as of October 
 
 ### Satellite Worker
 - ComfyUI unit: `/etc/systemd/system/comfyui.service` (`--listen 127.0.0.1 --port 8188 --lowvram --vram-headroom 1.2 --reserve-vram 0.8`).
-- Worker unit: `/etc/systemd/system/qwen-satellite.service` (`ExecStart=/home/joao/ComfyUI/venv/bin/python -u /home/joao/satellite_worker/worker.py`).
+- Worker unit: `/etc/systemd/system/qwen-satellite.service` (`ExecStart=/home/<user>/ComfyUI/venv/bin/python -u /home/<user>/satellite_worker/worker.py`).
 - Logs: `journalctl -u qwen-satellite.service -f` and `journalctl -u comfyui.service -f`.
 
 ## Local Testing (without real ComfyUI)

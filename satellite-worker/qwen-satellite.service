@@ -1,0 +1,16 @@
+[Unit]
+Description=Qwen Satellite Worker Service
+After=network.target comfyui.service
+Wants=comfyui.service
+
+[Service]
+Type=simple
+# Ajuste 'User' e caminhos abaixo pelo seu usuário do Linux (ex: User=usuario, WorkingDirectory=/home/usuario/satellite_worker)
+User=user
+WorkingDirectory=/home/user/satellite_worker
+ExecStart=/home/user/ComfyUI/venv/bin/python -u /home/user/satellite_worker/worker.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

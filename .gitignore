@@ -4,13 +4,21 @@ __pycache__/
 *$py.class
 *.so
 
-# Virtual Environments
+# Virtual Environments & Env Files
 venv/
 .venv/
 env/
 ENV/
 .env
 *.env
+.env.local
+.env.*.local
+
+# Backups & Temporary Files
+*.bak
+*.bak-*
+*.backup
+*.part
 
 # Logs
 *.log

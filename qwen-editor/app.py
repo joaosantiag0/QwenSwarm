@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import cgi
+import atexit
 import hashlib
+import heapq
 import html as html_module
 import json
 import math
@@ -12,6 +14,7 @@ import os
 import random
 import re
 import shutil
+import signal
 import subprocess
 import threading
 import time
@@ -85,8 +88,10 @@ POOL_DIR = STAGING_DIR / "pool"
 POOL_FILE = STAGING_DIR / "pool.json"
 QUEUE_REFS_DIR = STAGING_DIR / "queue_refs"
 RESIZED_DIR = STAGING_DIR / "resized"
+GALLERY_THUMB_DIR = STAGING_DIR / "gallery_thumbs"
 QUEUE_FILE = WEB_ROOT / "queue.json"
 POOL_THUMB_SIZE = 256
+GALLERY_THUMB_SIZE = 480
 QUEUE_MAX_RETRIES = 1
 QUEUE_BATCH_LIMIT = 500
 POOL_EXTS = (".png", ".jpg", ".jpeg", ".webp")
@@ -2062,8 +2067,39 @@ def delete_output_image(filename: str) -> bool:
     if path is None or not path.is_file():
         return False
     path.unlink()
+    thumb = gallery_thumb_path(path.name)
+    if thumb is not None:
+        thumb.unlink(missing_ok=True)
     remove_image_meta(path.name)
     return True
+
+
+def gallery_thumb_path(filename: str) -> Path | None:
+    name = Path(filename).name
+    if not name:
+        return None
+    return GALLERY_THUMB_DIR / f"{Path(name).stem}.jpg"
+
+
+def ensure_gallery_thumb(filename: str) -> Path | None:
+    """Cached JPEG preview for the gallery grid (long side = GALLERY_THUMB_SIZE)."""
+    src = safe_output_path(filename)
+    if src is None or not src.is_file():
+        return None
+    dest = gallery_thumb_path(src.name)
+    try:
+        if dest.is_file() and dest.stat().st_mtime >= src.stat().st_mtime:
+            return dest
+        from PIL import Image
+
+        GALLERY_THUMB_DIR.mkdir(parents=True, exist_ok=True)
+        with Image.open(src) as im:
+            im = im.convert("RGB")
+            im.thumbnail((GALLERY_THUMB_SIZE, GALLERY_THUMB_SIZE), Image.Resampling.LANCZOS)
+            im.save(dest, format="JPEG", quality=80, optimize=True)
+        return dest
+    except Exception:
+        return None
 
 
 def clear_image_prompt(filename: str) -> dict:
@@ -2115,6 +2151,91 @@ def list_gallery(
 
 def list_stale_gallery_entries(preset_slot: str | None = None) -> list[dict]:
     return list_gallery(limit=0, only_stale=True, preset_slot=preset_slot)
+
+
+_gallery_stale_cache: dict = {"sig": None, "counts": {}}
+_gallery_stale_lock = threading.Lock()
+
+
+def gallery_stale_counts() -> dict:
+    """Counts of images whose preset changed, total and per preset slot.
+
+    Cached by a cheap signature (file count, meta mtime, preset updated_at set) so
+    paginated gallery loads do not rescan every PNG on each request.
+    """
+    presets = presets_by_id()
+    meta_db = load_image_meta()
+    files = list(COMFY_OUTPUT.glob("qwen_web_*.png"))
+    try:
+        meta_stat = META_FILE.stat()
+        meta_sig: tuple = (meta_stat.st_mtime_ns, meta_stat.st_size)
+    except OSError:
+        meta_sig = (0, 0)
+    sig = (
+        len(files),
+        meta_sig,
+        tuple(sorted((pid, str(p.get("updated_at") or "")) for pid, p in presets.items())),
+    )
+    with _gallery_stale_lock:
+        if _gallery_stale_cache["sig"] == sig:
+            return _gallery_stale_cache["counts"]
+        counts: dict = {"": 0}
+        for f in files:
+            stored = meta_db.get(f.name) or {}
+            prompt_id = stored.get("prompt_id") or meta_from_filename(f.name).get("prompt_id") or ""
+            if not image_needs_regen(stored, prompt_id, presets):
+                continue
+            counts[""] += 1
+            preset = presets.get(prompt_id) or {}
+            if preset:
+                slot = preset_time_slot(float(preset.get("updated_at") or 0))[0]
+                counts[slot] = counts.get(slot, 0) + 1
+        _gallery_stale_cache["sig"] = sig
+        _gallery_stale_cache["counts"] = counts
+        return counts
+
+
+def gallery_page(
+    offset: int = 0,
+    limit: int = 48,
+    only_stale: bool = False,
+    preset_slot: str | None = None,
+) -> dict:
+    """One page of the gallery plus the total count for the active filter."""
+    meta_db = load_image_meta()
+    presets = presets_by_id()
+    files = sorted(
+        COMFY_OUTPUT.glob("qwen_web_*.png"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    offset = max(0, int(offset or 0))
+    limit = max(0, int(limit or 0))
+    if not only_stale and not preset_slot and limit > 0:
+        # Fast path: only build metadata for the requested window.
+        total = len(files)
+        window = files[offset : offset + limit]
+        return {
+            "images": [gallery_entry(f, meta_db, presets) for f in window],
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+        }
+    # Filters need a full scan (stale/slot are per-image metadata).
+    entries = [gallery_entry(f, meta_db, presets) for f in files]
+    if only_stale:
+        entries = [e for e in entries if e.get("needs_regen")]
+    if preset_slot:
+        entries = [e for e in entries if e.get("preset_slot") == preset_slot]
+    total = len(entries)
+    if limit <= 0:
+        return {"images": entries, "total": total, "offset": 0, "limit": total}
+    return {
+        "images": entries[offset : offset + limit],
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+    }
 
 
 def collect_preset_slots() -> list[dict]:
@@ -2219,6 +2340,8 @@ def delete_all_output_images() -> int:
     for path in COMFY_OUTPUT.glob("qwen_web_*.png"):
         path.unlink()
         count += 1
+    for thumb in GALLERY_THUMB_DIR.glob("*.jpg"):
+        thumb.unlink(missing_ok=True)
     with meta_lock:
         save_image_meta({})
     return count
@@ -2604,18 +2727,92 @@ def load_queue_data() -> dict:
         return {"current_batch_id": "", "items": []}
 
 
-def save_queue_locked() -> None:
-    """Persiste a fila. Deve ser chamado segurando queue_lock."""
+QUEUE_SAVE_DEBOUNCE_S = 8.0
+_queue_save_event = threading.Event()
+_queue_save_thread: threading.Thread | None = None
+_queue_save_state_lock = threading.Lock()
+
+
+def _save_queue_now(lock_timeout: float | None = None) -> bool:
+    """Serializa a fila num snapshot e grava queue.json de forma atômica."""
+    if lock_timeout is None:
+        queue_lock.acquire()
+    elif not queue_lock.acquire(timeout=lock_timeout):
+        return False
+    try:
+        batch_id = queue_current_batch
+        refs = list(queue_items.values())
+    finally:
+        queue_lock.release()
+    items = [dict(it) for it in refs]
     QUEUE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "current_batch_id": queue_current_batch,
-        "items": list(queue_items.values()),
-    }
     tmp = QUEUE_FILE.with_suffix(".json.tmp")
     with tmp.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
+        json.dump({"current_batch_id": batch_id, "items": items}, f, ensure_ascii=False, indent=2)
         f.write("\n")
     tmp.replace(QUEUE_FILE)
+    return True
+
+
+def queue_save_loop() -> None:
+    while True:
+        _queue_save_event.wait()
+        # Coalesce bursts: a 200MB+ queue takes seconds to serialize, so saving on
+        # every transition would stall every reader and the satellite workers.
+        time.sleep(QUEUE_SAVE_DEBOUNCE_S)
+        _queue_save_event.clear()
+        try:
+            _save_queue_now()
+        except Exception as exc:
+            print(f"[Queue] Erro ao salvar queue.json: {exc}")
+            time.sleep(2)
+
+
+def _ensure_queue_save_thread() -> None:
+    global _queue_save_thread
+    if _queue_save_thread is not None and _queue_save_thread.is_alive():
+        return
+    with _queue_save_state_lock:
+        if _queue_save_thread is not None and _queue_save_thread.is_alive():
+            return
+        _queue_save_thread = threading.Thread(target=queue_save_loop, name="queue-saver", daemon=True)
+        _queue_save_thread.start()
+
+
+def save_queue_locked() -> None:
+    """Agenda a gravação assíncrona (debounced) de queue.json. Chamar segurando queue_lock."""
+    _ensure_queue_save_thread()
+    _queue_save_event.set()
+
+
+def _queue_flush_on_exit() -> None:
+    if _queue_term_flushed:
+        return
+    try:
+        _save_queue_now(lock_timeout=10.0)
+    except Exception:
+        pass
+
+
+_queue_term_flushed = False
+
+
+def _queue_sigterm(signum, frame) -> None:
+    """systemctl restart manda SIGTERM: grava o snapshot final antes de sair."""
+    global _queue_term_flushed
+    _queue_term_flushed = True
+    try:
+        _save_queue_now(lock_timeout=15.0)
+    except Exception:
+        pass
+    raise SystemExit(0)
+
+
+atexit.register(_queue_flush_on_exit)
+try:
+    signal.signal(signal.SIGTERM, _queue_sigterm)
+except (ValueError, OSError):
+    pass  # non-main thread or platform without SIGTERM
 
 
 def queue_item_priority(it: dict) -> int:
@@ -3069,42 +3266,61 @@ def queue_item_public(it: dict, pool_map: dict) -> dict:
     }
 
 
+_pool_map_cache: dict = {"key": None, "map": {}}
+
+
+def pool_map_cached() -> dict:
+    """Pool id → record map, cached until pool.json changes (it is written atomically)."""
+    try:
+        st = POOL_FILE.stat()
+        key = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return {}
+    if _pool_map_cache["key"] == key:
+        return _pool_map_cache["map"]
+    with pool_lock:
+        mapping = {r["id"]: r for r in load_pool() if r.get("id")}
+    _pool_map_cache["key"] = key
+    _pool_map_cache["map"] = mapping
+    return mapping
+
+
 def queue_view(limit: int = 120) -> dict:
     with queue_lock:
-        snapshot = [
-            dict(it)
-            for it in sorted(
-                (x for x in queue_items.values() if x.get("batch_id") == queue_current_batch),
-                key=lambda x: x.get("order") or 0,
-            )
-        ]
-        all_items = list(queue_items.values())
-        summary = {
-            "total": len(all_items),
-            "pending": sum(1 for x in all_items if x.get("status") == "pending"),
-            "running": sum(1 for x in all_items if x.get("status") == "running"),
-            "leased": sum(1 for x in all_items if x.get("status") == "leased"),
-            "done": sum(1 for x in all_items if x.get("status") == "done"),
-            "error": sum(1 for x in all_items if x.get("status") == "error"),
-            "cancelled": sum(1 for x in all_items if x.get("status") == "cancelled"),
-            "paused": queue_paused,
-            "active": any(x.get("status") in ("pending", "running", "leased") for x in all_items),
-        }
+        # Only the snapshot needs the lock: serializing 180k+ items outside it keeps
+        # /api/queue fast even while queue.json is being written in the background.
         batch_id = queue_current_batch
-    pool_map = {r["id"]: r for r in load_pool()}
-    total = len(snapshot)
+        paused = queue_paused
+        items = list(queue_items.values())
+    counts = {"pending": 0, "running": 0, "leased": 0, "done": 0, "error": 0, "cancelled": 0}
+    all_batch = []
+    for it in items:
+        st = it.get("status")
+        if st in counts:
+            counts[st] += 1
+        if it.get("batch_id") == batch_id:
+            all_batch.append(it)
+    summary = {
+        "total": len(items),
+        **counts,
+        "paused": paused,
+        "active": counts["pending"] + counts["running"] + counts["leased"] > 0,
+    }
+    total = len(all_batch)
     if total > limit:
-        running = [x for x in snapshot if x.get("status") in ("running", "leased")]
-        pending = [x for x in snapshot if x.get("status") == "pending"]
-        finished = [x for x in snapshot if x.get("status") in ("done", "error", "cancelled")]
+        running = [x for x in all_batch if x.get("status") in ("running", "leased")]
+        pending = [x for x in all_batch if x.get("status") == "pending"]
+        finished = [x for x in all_batch if x.get("status") in ("done", "error", "cancelled")]
         take_fin = min(len(finished), max(20, limit // 4))
-        head_fin = finished[-take_fin:] if finished else []
+        head_fin = heapq.nlargest(take_fin, finished, key=lambda x: x.get("order") or 0)
         rest = max(0, limit - len(head_fin) - len(running))
-        head_pending = pending[:rest]
+        head_pending = heapq.nsmallest(rest, pending, key=lambda x: x.get("order") or 0)
         window = head_fin + running + head_pending
         window.sort(key=lambda x: x.get("order") or 0)
     else:
-        window = snapshot
+        window = all_batch
+        window.sort(key=lambda x: x.get("order") or 0)
+    pool_map = pool_map_cached()
     summary["items_total"] = total
     summary["window_size"] = len(window)
     summary["truncated"] = total > len(window)
@@ -3731,7 +3947,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _file(self, path: Path, content_type: str):
+    def _file(self, path: Path, content_type: str, cache_seconds: int = 0):
         if not path.is_file():
             self.send_error(HTTPStatus.NOT_FOUND)
             return
@@ -3739,6 +3955,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
+        if cache_seconds > 0:
+            self.send_header("Cache-Control", f"public, max-age={cache_seconds}")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "*")
@@ -3882,14 +4100,34 @@ class Handler(BaseHTTPRequestHandler):
             all_images = qs.get("all", ["0"])[0] in ("1", "true", "yes")
             only_stale = qs.get("stale", ["0"])[0] in ("1", "true", "yes")
             preset_slot = (qs.get("slot", [""])[0] or "").strip() or None
-            limit = 0 if all_images else 48
-            images = list_gallery(
-                limit=limit, only_stale=only_stale, preset_slot=preset_slot
+            try:
+                offset = max(0, int(qs.get("offset", ["0"])[0] or 0))
+            except ValueError:
+                offset = 0
+            try:
+                limit = max(0, int(qs.get("limit", ["48"])[0] or 48))
+            except ValueError:
+                limit = 48
+            if all_images:
+                limit = 0
+            page = gallery_page(
+                offset=offset,
+                limit=limit,
+                only_stale=only_stale,
+                preset_slot=preset_slot,
             )
-            stale_count = len(list_stale_gallery_entries(preset_slot=preset_slot))
+            stale_count = (
+                page["total"]
+                if only_stale
+                else gallery_stale_counts().get(preset_slot or "", 0)
+            )
             return self._json(
                 {
-                    "images": images,
+                    "images": page["images"],
+                    "total": page["total"],
+                    "offset": page["offset"],
+                    "limit": page["limit"],
+                    "has_more": page["offset"] + len(page["images"]) < page["total"],
                     "stale_count": stale_count,
                     "preset_slot": preset_slot,
                 }
@@ -3954,6 +4192,14 @@ class Handler(BaseHTTPRequestHandler):
             if not job:
                 return self._json({"error": "Job não encontrado"}, HTTPStatus.NOT_FOUND)
             return self._json(job)
+
+        if path.startswith("/output/thumb/"):
+            name = Path(path.removeprefix("/output/thumb/")).name
+            thumb = ensure_gallery_thumb(name)
+            if thumb is None:
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            return self._file(thumb, "image/jpeg", cache_seconds=86400)
 
         if path.startswith("/output/"):
             name = Path(path.removeprefix("/output/")).name

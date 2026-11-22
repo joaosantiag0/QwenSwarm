@@ -1,0 +1,15 @@
+[Unit]
+Description=ComfyUI Service for Satellite Worker
+After=network.target
+
+[Service]
+Type=simple
+# Ajuste 'User' e caminhos abaixo pelo seu usuário do Linux (ex: User=usuario, WorkingDirectory=/home/usuario/ComfyUI)
+User=user
+WorkingDirectory=/home/user/ComfyUI
+ExecStart=/home/user/ComfyUI/venv/bin/python main.py --listen 127.0.0.1 --port 8188 --lowvram --vram-headroom 1.2 --reserve-vram 0.8
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
