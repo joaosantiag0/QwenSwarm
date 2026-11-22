@@ -1791,8 +1791,13 @@
           </div>
         </div>
         <div class="fp-controls">
+          <label for="fp-step-ms" style="display:inline-flex; align-items:center; gap:0.35rem; font-size:0.85rem; color:var(--muted);">
+            <span>Passo:</span>
+            <input type="number" id="fp-step-ms" min="50" max="60000" step="100" value="1000" title="Intervalo entre frames em milissegundos (ex: 1000 para 1s, 500 para 0.5s, 250 para 0.25s)">
+            <span>ms</span>
+          </label>
           <button type="button" id="fp-more" class="btn-secondary">Capturar mais (+60s)</button>
-          <button type="button" id="fp-resample" class="btn-secondary" title="Reiniciar amostragem a partir do segundo 0">Reiniciar do início</button>
+          <button type="button" id="fp-resample" class="btn-secondary" title="Reiniciar amostragem com o novo passo a partir do segundo 0">Reiniciar do início</button>
           <button type="button" id="fp-all" class="btn-secondary">Selecionar todos</button>
           <button type="button" id="fp-none" class="btn-secondary">Limpar seleção</button>
           <span class="fp-hint" id="fp-selected">0 selecionados</span>
@@ -1830,12 +1835,17 @@
     const fpResampleBtn = document.getElementById('fp-resample');
     const fpAllBtn = document.getElementById('fp-all');
     const fpNoneBtn = document.getElementById('fp-none');
+    const fpStepMsEl = document.getElementById('fp-step-ms');
     const fpCountInfoEl = document.getElementById('fp-count-info');
     const fpAddBtn = document.getElementById('fp-add');
     const fpStatusEl = document.getElementById('fp-status');
     const FP_BATCH_SIZE = 60;
-    const FP_STEP_SEC = 1.0;
     let fpState = null;
+
+    function fpGetStepSec() {
+      const ms = Math.max(50, Math.min(60000, Math.round(Number(fpStepMsEl?.value)) || 1000));
+      return ms / 1000;
+    }
 
     function fpFormatTime(t) {
       const s = Math.max(0, Number(t) || 0);
@@ -1897,6 +1907,7 @@
       if (!fpState) return;
       const duration = fpState.duration || 0;
       const nextTime = fpState.nextTime || 0;
+      const stepSec = fpGetStepSec();
       const isComplete = duration > 0 && nextTime >= duration;
       if (fpCountInfoEl) {
         fpCountInfoEl.textContent = `${fpState.frames.length} frames carregados · duração ${fpFormatTime(duration)}`;
@@ -1916,7 +1927,7 @@
       } else {
         if (fpMoreBtn) {
           fpMoreBtn.disabled = false;
-          const nextEnd = Math.min(duration, nextTime + (FP_BATCH_SIZE * FP_STEP_SEC));
+          const nextEnd = Math.min(duration, Math.round((nextTime + (FP_BATCH_SIZE * stepSec)) * 1000) / 1000);
           fpMoreBtn.textContent = `Capturar mais (${fpFormatTime(nextTime)} – ${fpFormatTime(nextEnd)})`;
         }
         if (fpResampleBtn) fpResampleBtn.disabled = false;
@@ -1999,6 +2010,8 @@
       const token = ++fpState.token;
       fpState.sampling = true;
 
+      const stepSec = fpGetStepSec();
+
       if (reset) {
         fpState.nextTime = 0;
         const kept = (fpState.frames || []).filter(f => f.selected);
@@ -2013,13 +2026,13 @@
 
       while (times.length < FP_BATCH_SIZE) {
         if (duration > 0 && t > duration) break;
-        const clamped = Math.min(Math.max(0, t), Math.max(0, duration - 0.05));
+        const clamped = Math.round(Math.min(Math.max(0, t), Math.max(0, duration - 0.001)) * 1000) / 1000;
         times.push(clamped);
         if (duration === 0 || t >= duration) {
-          t += FP_STEP_SEC;
+          t = Math.round((t + stepSec) * 1000) / 1000;
           break;
         }
-        t += FP_STEP_SEC;
+        t = Math.round((t + stepSec) * 1000) / 1000;
       }
       fpState.nextTime = t;
 
@@ -2032,7 +2045,7 @@
           return;
         }
         const targetT = times[i];
-        const existing = fpState.frames.find(f => Math.abs(f.time - targetT) < 0.05);
+        const existing = fpState.frames.find(f => Math.abs(f.time - targetT) < 0.01);
         if (existing) {
           continue;
         }
@@ -2176,6 +2189,10 @@
     }
     if (fpMoreBtn) fpMoreBtn.addEventListener('click', () => fpSampleBatch(false));
     if (fpResampleBtn) fpResampleBtn.addEventListener('click', () => fpSampleBatch(true));
+    if (fpStepMsEl) {
+      fpStepMsEl.addEventListener('input', () => fpUpdateControlsState());
+      fpStepMsEl.addEventListener('change', () => fpUpdateControlsState());
+    }
     document.getElementById('fp-grab').addEventListener('click', () => fpGrabCurrent());
     fpAddBtn.addEventListener('click', async () => {
       if (!fpState) return;
