@@ -1594,11 +1594,15 @@
         const newIds = (data.items || []).map(i => i.id);
         const map = new Map(oldIds.map((oid, i) => [oid, newIds[i]]));
         poolImages = poolImages.filter(p => !oldIds.includes(p.id));
-        poolSelection = poolSelection
+        poolSelection = [...new Set(poolSelection
           .map(x => (map.has(x) ? map.get(x) : x))
-          .filter(Boolean);
+          .filter(Boolean))];
         await loadPool();
-        setStatus(`${newIds.length} photo(s) saved to pool.`, 'done');
+        if (data.dup_count > 0) {
+          setStatus(`${data.new_count} photo(s) saved to pool (${data.dup_count} duplicate(s) ignored).`, 'done');
+        } else {
+          setStatus(`${newIds.length} photo(s) saved to pool.`, 'done');
+        }
       } catch (err) {
         poolImages = poolImages.filter(p => !oldIds.includes(p.id));
         poolSelection = poolSelection.filter(x => !oldIds.includes(x));
@@ -2621,6 +2625,22 @@
         if (h < 48) return `~${h.toFixed(1)} h`;
         return `~${(h / 24).toFixed(1)} days`;
       };
+      let appendMode = false;
+      try {
+        const qRes = await fetch('/api/queue');
+        const qData = await qRes.json();
+        const qSummary = qData.summary || {};
+        if (qSummary.active) {
+          const pendingCount = qSummary.pending || 0;
+          const confirmAppend = confirm(
+            `Já existe uma fila em andamento (${fmtNum(pendingCount)} pendentes).\n\n` +
+            `Deseja adicionar estas ${fmtNum(totalGen)} novas gerações ao FINAL da fila atual sem interrompê-la (modo Append)?`
+          );
+          if (!confirmAppend) return;
+          appendMode = true;
+        }
+      } catch (e) { /* ignore */ }
+
       let msg = `${poolSelection.length} image(s) × ${presetCount} prompt(s) = ${fmtNum(totalGen)} generations.\n` +
         `Estimated time: ${fmtDur(totalGen * 2)} (at ~2 min per image).`;
       if (totalGen > 500) {
@@ -2628,7 +2648,8 @@
       } else if (totalGen > 50) {
         msg += `\n\nContinue?`;
       }
-      if (totalGen > 50 && !confirm(msg)) return;
+      if (!appendMode && totalGen > 50 && !confirm(msg)) return;
+      if (appendMode && totalGen > 500 && !confirm(`Aviso de lote grande: ${fmtNum(totalGen)} gerações serão adicionadas ao final da fila. Continuar mesmo assim?`)) return;
       queueBtn.disabled = true;
       setStatus('Submitting batch...', 'running');
       try {
@@ -2646,7 +2667,7 @@
           const p = poolEntry(id);
           return p && !p.file;
         });
-        const ordered = [...newIds, ...savedIds];
+        const ordered = [...new Set([...newIds, ...savedIds])];
         poolImages = poolImages.filter(p => !p.file);
         poolSelection = savedIds.slice();
         const fd2 = new FormData();
@@ -2656,6 +2677,7 @@
         fd2.set('quality', qualitySelect.value);
         fd2.set('resolution', resolutionInput.value);
         fd2.set('steps', stepsInput.value);
+        if (appendMode) fd2.set('append', '1');
         if (totalGen > 500) fd2.set('force', '1');
         const refBoxes = document.querySelectorAll('.preset-ref-use');
         if (refBoxes.length) {
@@ -2665,7 +2687,8 @@
         const res2 = await fetch('/api/batch', { method: 'POST', body: fd2 });
         const data2 = await res2.json().catch(() => ({}));
         if (!res2.ok) throw new Error(data2.error || res2.statusText);
-        setStatus(`Batch enqueued: ${fmtNum(data2.total)} items (${data2.images} image(s) × ${data2.presets} prompts).`, 'done');
+        const appendNote = data2.appended ? ' adicionadas ao final da fila ativa' : ' enqueued';
+        setStatus(`Batch: ${fmtNum(data2.total)} items (${data2.images} imagem(ns) × ${data2.presets} prompts)${appendNote}.`, 'done');
         await loadPool();
         startQueuePolling();
       } catch (err) {

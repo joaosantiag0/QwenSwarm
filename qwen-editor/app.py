@@ -2254,6 +2254,14 @@ def safe_pool_id(pool_id: str) -> str | None:
     return pid or None
 
 
+def compute_file_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        while chunk := f.read(65536):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def pool_main_path(rec: dict) -> Path | None:
     pid = safe_pool_id(str(rec.get("id") or ""))
     name = str(rec.get("file") or "")
@@ -2277,7 +2285,7 @@ def pool_thumb_path(pool_id: str) -> Path | None:
 
 def public_pool_item(rec: dict) -> dict:
     pid = rec.get("id")
-    return {
+    res = {
         "id": pid,
         "name": rec.get("original_name") or "",
         "width": rec.get("width"),
@@ -2287,6 +2295,11 @@ def public_pool_item(rec: dict) -> dict:
         "thumb_url": f"/api/pool/{pid}/thumb",
         "file_url": f"/api/pool/{pid}/file",
     }
+    if "sha256" in rec:
+        res["sha256"] = rec["sha256"]
+    if rec.get("_duplicate"):
+        res["is_duplicate"] = True
+    return res
 
 
 def make_pool_thumb(src: Path, thumb_path: Path) -> tuple[int, int]:
@@ -2305,17 +2318,52 @@ def add_pool_images(uploads: list) -> list[dict]:
     POOL_DIR.mkdir(parents=True, exist_ok=True)
     with pool_lock:
         items = load_pool()
+        pool_changed = False
+        sha_to_item: dict[str, dict] = {}
+        for it in items:
+            sha = it.get("sha256")
+            if not sha and it.get("file"):
+                fpath = POOL_DIR / it["file"]
+                if fpath.is_file():
+                    try:
+                        sha = compute_file_sha256(fpath)
+                        it["sha256"] = sha
+                        pool_changed = True
+                    except Exception:
+                        pass
+            if sha:
+                sha_to_item[sha] = it
+
         for upload in uploads:
             if not field_has_upload(upload):
                 continue
+            f = getattr(upload, "file", None)
+            if f is None:
+                continue
+            if hasattr(f, "seek"):
+                try:
+                    f.seek(0)
+                except Exception:
+                    pass
+            data_bytes = f.read()
+            if not data_bytes:
+                continue
+            file_sha = hashlib.sha256(data_bytes).hexdigest()
+            if file_sha in sha_to_item:
+                existing = sha_to_item[file_sha]
+                rec = dict(existing)
+                rec["_duplicate"] = True
+                out.append(rec)
+                continue
+
             pool_id = uuid.uuid4().hex[:12]
             ext = Path(upload.filename or "img.png").suffix.lower()
             if ext not in POOL_EXTS:
                 ext = ".png"
             main_name = f"{pool_id}_main{ext}"
             dest = POOL_DIR / main_name
-            with dest.open("wb") as f:
-                shutil.copyfileobj(upload.file, f)
+            with dest.open("wb") as out_f:
+                out_f.write(data_bytes)
             try:
                 w, h = make_pool_thumb(dest, POOL_DIR / f"{pool_id}_thumb.jpg")
             except Exception:
@@ -2327,38 +2375,64 @@ def add_pool_images(uploads: list) -> list[dict]:
                 "original_name": Path(upload.filename or main_name).name,
                 "width": w,
                 "height": h,
+                "sha256": file_sha,
                 "added_at": time.time(),
             }
             items.append(rec)
+            sha_to_item[file_sha] = rec
             out.append(rec)
-        save_pool(items)
+            pool_changed = True
+
+        if pool_changed:
+            save_pool(items)
     return out
 
 
 def save_pool_image_bytes(data_bytes: bytes, filename: str = "image.png") -> dict:
+    if not data_bytes:
+        raise ValueError("Arquivo de imagem vazio")
+    file_sha = hashlib.sha256(data_bytes).hexdigest()
     POOL_DIR.mkdir(parents=True, exist_ok=True)
-    pool_id = uuid.uuid4().hex[:12]
-    ext = Path(filename).suffix.lower()
-    if ext not in POOL_EXTS:
-        ext = ".png"
-    main_name = f"{pool_id}_main{ext}"
-    dest = POOL_DIR / main_name
-    dest.write_bytes(data_bytes)
-    try:
-        w, h = make_pool_thumb(dest, POOL_DIR / f"{pool_id}_thumb.jpg")
-    except Exception:
-        dest.unlink(missing_ok=True)
-        raise ValueError("Arquivo de imagem inválido ou corrompido")
-    rec = {
-        "id": pool_id,
-        "file": main_name,
-        "original_name": Path(filename).name,
-        "width": w,
-        "height": h,
-        "added_at": time.time(),
-    }
     with pool_lock:
         items = load_pool()
+        pool_changed = False
+        for it in items:
+            sha = it.get("sha256")
+            if not sha and it.get("file"):
+                fpath = POOL_DIR / it["file"]
+                if fpath.is_file():
+                    try:
+                        sha = compute_file_sha256(fpath)
+                        it["sha256"] = sha
+                        pool_changed = True
+                    except Exception:
+                        pass
+            if sha == file_sha:
+                if pool_changed:
+                    save_pool(items)
+                return it
+
+        pool_id = uuid.uuid4().hex[:12]
+        ext = Path(filename).suffix.lower()
+        if ext not in POOL_EXTS:
+            ext = ".png"
+        main_name = f"{pool_id}_main{ext}"
+        dest = POOL_DIR / main_name
+        dest.write_bytes(data_bytes)
+        try:
+            w, h = make_pool_thumb(dest, POOL_DIR / f"{pool_id}_thumb.jpg")
+        except Exception:
+            dest.unlink(missing_ok=True)
+            raise ValueError("Arquivo de imagem inválido ou corrompido")
+        rec = {
+            "id": pool_id,
+            "file": main_name,
+            "original_name": Path(filename).name,
+            "width": w,
+            "height": h,
+            "sha256": file_sha,
+            "added_at": time.time(),
+        }
         items.append(rec)
         save_pool(items)
     return rec
@@ -3239,13 +3313,23 @@ def create_batch(
             and any(it.get("batch_id") == queue_current_batch for it in queue_items.values())
         ):
             batch_id = queue_current_batch
+        elif append:
+            active_batches = [
+                it.get("batch_id")
+                for it in queue_items.values()
+                if it.get("status") in ("pending", "running") and it.get("batch_id")
+            ]
+            if active_batches:
+                batch_id = active_batches[0]
+                queue_current_batch = batch_id
+            else:
+                queue_current_batch = batch_id
         else:
             queue_current_batch = batch_id
         order = 1 + max(
             (
                 it.get("order") or 0
                 for it in queue_items.values()
-                if it.get("batch_id") == batch_id
             ),
             default=0,
         )
@@ -3289,6 +3373,7 @@ def create_batch(
         "total": len(created),
         "images": len(pool_ids_in_order),
         "presets": len(selected),
+        "appended": append,
     }
 
 
@@ -4374,8 +4459,15 @@ class Handler(BaseHTTPRequestHandler):
                         {"error": "Nenhuma imagem válida (aceita png/jpg/webp)"},
                         HTTPStatus.BAD_REQUEST,
                     )
+                dup_count = sum(1 for r in added if r.get("_duplicate"))
+                new_count = len(added) - dup_count
                 return self._json(
-                    {"ok": True, "items": [public_pool_item(r) for r in added]},
+                    {
+                        "ok": True,
+                        "items": [public_pool_item(r) for r in added],
+                        "new_count": new_count,
+                        "dup_count": dup_count,
+                    },
                     HTTPStatus.CREATED,
                 )
 
@@ -4425,6 +4517,7 @@ class Handler(BaseHTTPRequestHandler):
                 ref_raw = form_text(form, "preset_ref_ids")
                 ref_ids = [x.strip() for x in ref_raw.split(",") if x.strip()] or None
                 force = form_text(form, "force").lower() in ("1", "true", "yes")
+                append = form_text(form, "append").lower() in ("1", "true", "yes")
                 try:
                     info = create_batch(
                         ordered_ids,
@@ -4432,6 +4525,7 @@ class Handler(BaseHTTPRequestHandler):
                         preset_end_id,
                         settings,
                         ref_ids,
+                        append=append,
                         force=force,
                     )
                 except ValueError as exc:
