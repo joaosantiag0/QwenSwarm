@@ -2626,25 +2626,55 @@ def queue_item_priority(it: dict) -> int:
 
 
 def queue_next_pending() -> dict | None:
-    """Próximo item: quick primeiro (por prioridade e inserção), depois batch por prioridade e inserção."""
+    """Próximo item: quick primeiro (por prioridade e order), depois batch por prioridade e order."""
     quick = None
-    quick_priority = None
+    quick_key = None
     batch = None
-    batch_priority = None
+    batch_key = None
     for it in queue_items.values():
         if it.get("status") != "pending":
             continue
+        pr = queue_item_priority(it)
+        ord_val = it.get("order") or 0
+        key = (-pr, ord_val)
         if it.get("lane") == "quick":
-            pr = queue_item_priority(it)
-            if quick is None or quick_priority is None or pr > quick_priority:
+            if quick is None or key < quick_key:
                 quick = it
-                quick_priority = pr
+                quick_key = key
         else:
-            pr = queue_item_priority(it)
-            if batch is None or batch_priority is None or pr > batch_priority:
+            if batch is None or key < batch_key:
                 batch = it
-                batch_priority = pr
+                batch_key = key
     return quick or batch
+
+
+def shuffle_pending_queue() -> int:
+    global queue_items
+    with queue_lock:
+        pending_ids = [
+            it_id
+            for it_id, it in queue_items.items()
+            if it.get("status") == "pending" and it.get("lane") != "quick"
+        ]
+        if not pending_ids:
+            return 0
+        orders = list(range(1, len(pending_ids) + 1))
+        random.shuffle(orders)
+        for it_id, ord_val in zip(pending_ids, orders):
+            queue_items[it_id]["order"] = ord_val
+
+        sorted_items = sorted(
+            queue_items.values(),
+            key=lambda x: (
+                0 if x.get("lane") == "quick" else 1,
+                -queue_item_priority(x),
+                x.get("order") or 0,
+            ),
+        )
+        queue_items = {str(it["id"]): it for it in sorted_items}
+        save_queue_locked()
+        queue_lock.notify_all()
+    return len(pending_ids)
 
 
 def update_queue_item(item_id: str, **fields) -> None:
@@ -4856,6 +4886,17 @@ class Handler(BaseHTTPRequestHandler):
                         save_queue_locked()
                         queue_lock.notify_all()
                 return self._json({"ok": True, "reset_count": count, "queue": queue_view()})
+
+            if parsed.path == "/api/queue/shuffle":
+                count = shuffle_pending_queue()
+                return self._json(
+                    {
+                        "ok": True,
+                        "shuffled_count": count,
+                        "message": f"Fila embaralhada: {count} itens pendentes reordenados aleatoriamente.",
+                        "queue": queue_view(),
+                    }
+                )
 
             if parsed.path in ("/api/queue/pause", "/api/queue/resume", "/api/queue/cancel"):
                 global queue_paused
